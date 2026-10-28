@@ -178,17 +178,17 @@ $(B)/art3-sound.d71: $(B)/babypac2.prg $(B)/pinball2.prg $(B)/vdctest.prg $(B)/d
 art3-sound: $(B)/art3-sound.d64 $(B)/art3-sound.d71 $(B)/test-bot2.d64 $(B)/test-auto2.d64
 	cp $(B)/art3-sound.d64 $(B)/art3-sound.d71 release/
 
-# art4-mazefix: art3-sound with the maze fixed (tunnel row was walled off,
+# baby-pac-man: art3-sound with the maze fixed (tunnel row was walled off,
 # wall lines widened and smoothed). Same four programs.
-$(B)/art4-mazefix.d64: $(B)/babypac2.prg $(B)/pinball2.prg $(B)/vdctest.prg $(B)/dualdemo.prg
+$(B)/baby-pac-man.d64: $(B)/babypac2.prg $(B)/pinball2.prg $(B)/vdctest.prg $(B)/dualdemo.prg
 	rm -f $@
-	$(C1541) -format "baby pac-man fix,a6" d64 $@ -write $(B)/babypac2.prg "baby pac-man" -write $(B)/pinball2.prg pinball -write $(B)/vdctest.prg vdctest -write $(B)/dualdemo.prg dualdemo >/dev/null
-$(B)/art4-mazefix.d71: $(B)/babypac2.prg $(B)/pinball2.prg $(B)/vdctest.prg $(B)/dualdemo.prg
+	$(C1541) -format "baby pac-man,bp" d64 $@ -write $(B)/babypac2.prg "baby pac-man" -write $(B)/pinball2.prg pinball -write $(B)/vdctest.prg vdctest -write $(B)/dualdemo.prg dualdemo >/dev/null
+$(B)/baby-pac-man.d71: $(B)/babypac2.prg $(B)/pinball2.prg $(B)/vdctest.prg $(B)/dualdemo.prg
 	rm -f $@
-	$(C1541) -format "baby pac-man fix,a6" d71 $@ -write $(B)/babypac2.prg "baby pac-man" -write $(B)/pinball2.prg pinball -write $(B)/vdctest.prg vdctest -write $(B)/dualdemo.prg dualdemo >/dev/null
-.PHONY: art4-mazefix
-art4-mazefix: $(B)/art4-mazefix.d64 $(B)/art4-mazefix.d71
-	cp $(B)/art4-mazefix.d64 $(B)/art4-mazefix.d71 release/
+	$(C1541) -format "baby pac-man,bp" d71 $@ -write $(B)/babypac2.prg "baby pac-man" -write $(B)/pinball2.prg pinball -write $(B)/vdctest.prg vdctest -write $(B)/dualdemo.prg dualdemo >/dev/null
+.PHONY: baby-pac-man
+baby-pac-man: $(B)/baby-pac-man.d64 $(B)/baby-pac-man.d71
+	cp $(B)/baby-pac-man.d64 $(B)/baby-pac-man.d71 release/
 
 run-vdctest: $(B)/tier1-diag.d64
 	$(X128) -ntsc -drive9type 1571 -9 $(B)/tier1-diag.d64 -keybuf 'dload"vdctest",u9\nrun\n'

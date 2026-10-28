@@ -6,7 +6,7 @@
 
 A non-commercial homage to Bally Midway's 1982 **Baby Pac-Man**, the arcade hybrid with a video maze on top of a little pinball table. The Commodore 128 has two independent video chips, the 40-column VIC-IIe and the 80-column VDC, and this project puts the maze on one and the pinball on the other. Go down a chute and the maze freezes while the ball launches on the second screen. Drain the ball and you are back in the maze. It is written in 6502 assembly, with our own code and our own pixel art, as a tribute for the Vintage Computer Federation museum and the C128 community.
 
-**Status in one line:** it loads and runs on a real flat Commodore 128 (first run: 2026-10-28) and in the VICE x128 emulator. That first real run found a maze bug, fixed in the newest disk, **`art4-mazefix`**, which has not been run on the real machine yet. See [Status and honesty](#status-and-honesty).
+**Status in one line:** it loads and runs on a real flat Commodore 128 (first run: 2026-10-28) and in the VICE x128 emulator. That first real run found a maze bug, fixed in the newest disk, **`baby-pac-man`**, which has not been run on the real machine yet. See [Status and honesty](#status-and-honesty).
 
 ## Contents
 
@@ -51,7 +51,7 @@ The hero image at the top is the same table rescaled to 4:3, which is closer to 
 
 ## How to run it
 
-The disk images are in [`release/`](release/). The recommended one is **`art4-mazefix.d64`** (or `.d71`, the same files in 1571 format). The older `art3-sound` disk has a maze bug (the corridors along the middle of the maze are walled off), so do not use it. The disk holds four programs:
+The disk images are in [`release/`](release/). The recommended one is **`baby-pac-man.d64`** (or `.d71`, the same files in 1571 format). The older `art3-sound` disk has a maze bug (the corridors along the middle of the maze are walled off), so do not use it. The disk holds four programs:
 
 | Program | What it is |
 |---|---|
@@ -67,7 +67,7 @@ The game only runs on a **C128 in C128 mode, NTSC**, with an **80-column monitor
 Install [VICE](https://vice-emu.sourceforge.io/) 3.10 (we used it on macOS via Homebrew: `brew install vice`). From the repo root:
 
 ```sh
-x128 -ntsc -drive9type 1571 -9 release/art4-mazefix.d64 -keybuf 'dload"baby pac-man",u9\nrun\n'
+x128 -ntsc -drive9type 1571 -9 release/baby-pac-man.d64 -keybuf 'dload"baby pac-man",u9\nrun\n'
 ```
 
 This attaches the image as a 1571 on device 9, types the load command for you, and runs it. VICE opens two windows: the VIC window shows the maze and the VDC window shows the pinball. In our VICE tests the program started roughly 16 to 19 seconds after `RUN` (with true drive emulation on). Add `-VDC16KB` to emulate a 16K VDC (the game is designed to fit a 16K VDC, and we tested both 16K and 64K in VICE).
@@ -97,13 +97,13 @@ You need two things: the disk image on something the C128 can read, and the righ
 
 ### 1. Get the disk image
 
-Download `art4-mazefix.d64` from the [latest release](https://github.com/nickdnj/baby-pac-man-c128/releases) (or the `.d71`). The fallback disks (`art2-pinball`, `tier3-babypac` and the rest) are in the repo's [`release/`](release/) folder. Then pick one way to get it into a drive:
+Download `baby-pac-man.d64` from the [latest release](https://github.com/nickdnj/baby-pac-man-c128/releases) (or the `.d71`). The fallback disks (`art2-pinball`, `tier3-babypac` and the rest) are in the repo's [`release/`](release/) folder. Then pick one way to get it into a drive:
 
 | If you have... | Do this |
 |---|---|
 | **An SD-card drive (SD2IEC, uIEC, or similar)** | Copy the `.d64` onto the SD card. Put the card in, mount the image with the drive's own buttons or menu, and note its device number (often 8). Then load with `U8` instead of `U9`, or change the device number to 9. This is the easiest route. |
 | **An Ultimate-II+ cartridge, Ultimate 64, or Pi1541** | Put the `.d64` on its storage and mount it as drive 9 in its menu. |
-| **A real 1571 and a PC or Mac with a ZoomFloppy or XUM1541 cable** | Put a blank, formatted 5.25" disk in the drive and write the image with OpenCBM: `d64copy art4-mazefix.d64 9` (use the drive's device number). A single-sided `.d64` is a 1541-format disk, which a 1571 reads in 1541 mode. We have not tried this on a real 1571. |
+| **A real 1571 and a PC or Mac with a ZoomFloppy or XUM1541 cable** | Put a blank, formatted 5.25" disk in the drive and write the image with OpenCBM: `d64copy baby-pac-man.d64 9` (use the drive's device number). A single-sided `.d64` is a 1541-format disk, which a 1571 reads in 1541 mode. We have not tried this on a real 1571. |
 | **A volunteer with a C64/C128 disk-transfer kit** | Hand them the `.d64`. Ask for a copy of the disk as-is, not a file copy. |
 
 A plain file copy of the `.d64` onto a real floppy does not work. The image has to be written as a disk image, track by track.
@@ -200,7 +200,7 @@ The Makefile assumes Homebrew's `/opt/homebrew/bin`, and the project was built w
 | Target | What it does |
 |---|---|
 | `make` / `make all` | Builds the three early "tier" disks into `build/` (`tier1`, `tier2`, `tier3`). These use the **first-generation art and the first table**, not the current look. |
-| `make art4-mazefix` | **Builds the current recommended disk** (table v2, sound, fixed maze) into `build/` and **copies it to `release/art4-mazefix.d64` and `.d71`, overwriting those files**. |
+| `make baby-pac-man` | **Builds the current recommended disk** (table v2, sound, fixed maze) into `build/` and **copies it to `release/baby-pac-man.d64` and `.d71`, overwriting those files**. |
 | `make art3-sound` | Builds the previous disk (it has the maze bug) and copies it to `release/art3-sound.*`. |
 | `make test-tour` | Runs the maze tests: a pixel check that every actor fits every corridor, then a VICE run in which an autopilot Pac-Man eats every dot, clears the board and crosses the tunnel both ways. Needs VICE and takes a few seconds. |
 | `make art2-pinball`, `make art-babypac`, `make art-pinball` | Older art-pass images, each copied into `release/`. Because they rebuild from the current source, they now include sound. |
@@ -229,7 +229,7 @@ docs/images/ Screenshots used in this README
 
 ## Status and honesty
 
-**Real hardware, 2026-10-28.** The game was loaded and run on the museum's flat Commodore 128 (a 1985 model, so 16K of VDC RAM) with the maze on a Commodore 1902 and the pinball on a 1084S. Both screens came up in color. Playing it showed a bug that VICE had not: the corridors along the middle of the maze (the tunnel row) were walled off in the game logic and drawn wrongly, so Pac-Man could not use them and the board could never be cleared. The maze generator treated the tunnel row's corridor cells as blank space outside the border. That is fixed in `art4-mazefix`. New tests (`make test-tour`) check every corridor link pixel by pixel and have a bot eat every dot in VICE; both fail on the old data and pass on the new. **`art4-mazefix` has not been run on the real machine yet.**
+**Real hardware, 2026-10-28.** The game was loaded and run on the museum's flat Commodore 128 (a 1985 model, so 16K of VDC RAM) with the maze on a Commodore 1902 and the pinball on a 1084S. Both screens came up in color. Playing it showed a bug that VICE had not: the corridors along the middle of the maze (the tunnel row) were walled off in the game logic and drawn wrongly, so Pac-Man could not use them and the board could never be cleared. The maze generator treated the tunnel row's corridor cells as blank space outside the border. That is fixed in `baby-pac-man`. New tests (`make test-tour`) check every corridor link pixel by pixel and have a bot eat every dot in VICE; both fail on the old data and pass on the new. **`baby-pac-man` has not been run on the real machine yet.**
 
 **Everything else below was verified in the VICE x128 emulator only, as of 2026-10-27.**
 

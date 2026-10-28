@@ -13,7 +13,7 @@ Print this. Tester: ____________  Helper: ____________  Time in: ____  Out: ____
 
 ## 1. The disk and the order
 
-Use the disk **art4-mazefix** (disk name on screen: "BABY PAC-MAN FIX"). The older art3-sound disk has a maze bug. It holds four programs: VDCTEST, DUALDEMO, PINBALL, BABY PAC-MAN. Check it first:
+Use the disk **baby-pac-man** (disk name on screen: "BABY PAC-MAN"). The older art3-sound disk has a maze bug. It holds four programs: VDCTEST, DUALDEMO, PINBALL, BABY PAC-MAN. Check it first:
 
     DIRECTORY U9
 

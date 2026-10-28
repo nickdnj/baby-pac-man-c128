@@ -359,4 +359,4 @@ New tests (`make test-tour`):
   it stalls with 174 dots left and fails.
 - Zero page is not cleared at power-up: the AUTOTOUR counters are zeroed in mz_init_gfx.
 
-New disk: release/art4-mazefix.d64/.d71 (disk name "baby pac-man fix"). Not yet run on the real machine.
+New disk: release/baby-pac-man.d64/.d71 (disk name "baby pac-man"). Not yet run on the real machine.
