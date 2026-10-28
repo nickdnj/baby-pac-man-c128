@@ -178,6 +178,18 @@ $(B)/art3-sound.d71: $(B)/babypac2.prg $(B)/pinball2.prg $(B)/vdctest.prg $(B)/d
 art3-sound: $(B)/art3-sound.d64 $(B)/art3-sound.d71 $(B)/test-bot2.d64 $(B)/test-auto2.d64
 	cp $(B)/art3-sound.d64 $(B)/art3-sound.d71 release/
 
+# art4-mazefix: art3-sound with the maze fixed (tunnel row was walled off,
+# wall lines widened and smoothed). Same four programs.
+$(B)/art4-mazefix.d64: $(B)/babypac2.prg $(B)/pinball2.prg $(B)/vdctest.prg $(B)/dualdemo.prg
+	rm -f $@
+	$(C1541) -format "baby pac-man fix,a6" d64 $@ -write $(B)/babypac2.prg "baby pac-man" -write $(B)/pinball2.prg pinball -write $(B)/vdctest.prg vdctest -write $(B)/dualdemo.prg dualdemo >/dev/null
+$(B)/art4-mazefix.d71: $(B)/babypac2.prg $(B)/pinball2.prg $(B)/vdctest.prg $(B)/dualdemo.prg
+	rm -f $@
+	$(C1541) -format "baby pac-man fix,a6" d71 $@ -write $(B)/babypac2.prg "baby pac-man" -write $(B)/pinball2.prg pinball -write $(B)/vdctest.prg vdctest -write $(B)/dualdemo.prg dualdemo >/dev/null
+.PHONY: art4-mazefix
+art4-mazefix: $(B)/art4-mazefix.d64 $(B)/art4-mazefix.d71
+	cp $(B)/art4-mazefix.d64 $(B)/art4-mazefix.d71 release/
+
 run-vdctest: $(B)/tier1-diag.d64
 	$(X128) -ntsc -drive9type 1571 -9 $(B)/tier1-diag.d64 -keybuf 'dload"vdctest",u9\nrun\n'
 run-dualdemo: $(B)/tier1-diag.d64
@@ -185,3 +197,23 @@ run-dualdemo: $(B)/tier1-diag.d64
 
 clean:
 	rm -rf $(B)
+
+# ---------------------------------------------------------------- tour test
+# Test build: the maze autopilot walks a route that eats every dot and crosses
+# the tunnel both ways; ghosts cannot hurt. Run tests/run_tour.py on it.
+$(B)/tour_data.s: tools/mktour.py tools/mkmaze.py tools/artlib.py | $(B)
+	python3 tools/mktour.py $@
+$(B)/maze-tour.o: src/maze/maze.s $(B)/maze_data.s $(B)/tour_data.s src/hw/*.inc src/lib/*.inc
+	$(CA65) $(AFLAGS) -I $(B) -D AUTOPLAY=1 -D AUTOTOUR=1 -o $@ $<
+$(B)/main3-tour.o: src/maze/main3.s src/hw/*.inc src/lib/*.inc
+	$(CA65) $(AFLAGS) -D AUTOPLAY=1 -D AUTOTOUR=1 -o $@ $<
+TOUROBJ = $(B)/main3-tour.o $(B)/maze-tour.o $(B)/pinball2-bot.o $(LIBOBJ)
+$(B)/babypac-tour.prg: $(TOUROBJ) $(CFG)
+	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/babypac-tour.map -Ln $(B)/babypac-tour.lbl $(TOUROBJ)
+$(B)/test-tour.d64: $(B)/babypac-tour.prg
+	rm -f $@
+	$(C1541) -format "bpm tour,tt" d64 $@ -write $(B)/babypac-tour.prg bptour >/dev/null
+.PHONY: test-tour
+test-tour: $(B)/test-tour.d64
+	python3 -I tests/maze_clearance.py
+	python3 tests/run_tour.py

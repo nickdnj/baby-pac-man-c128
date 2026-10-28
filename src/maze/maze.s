@@ -63,6 +63,14 @@ want:       .res 1
 mz_chute:   .res 1
 mz_lives:   .res 1
 mz_dotsleft: .res 2
+.ifdef AUTOTOUR
+tp:         .res 2      ; tour table pointer
+tour_c:     .res 1      ; cell of the last tour step
+tour_r:     .res 1
+tour_done:  .res 1      ; 1 when the whole tour has been walked
+tour_boards: .res 1     ; boards started (2 = the first one was cleared)
+tour_wr:    .res 1      ; tunnel crossings
+.endif
 mz_hold:    .res 1      ; ghost hold frames after resume
 mz_hiscore: .res 3
 fright:     .res 2      ; frightened frames left
@@ -103,6 +111,12 @@ jn_t:       .res 1      ; frames left on this note
 ; ------------------------------------------------------------------------
 ; mz_init_gfx: VIC bank 3, our charset (256 glyphs) + sprites.
 mz_init_gfx:
+.ifdef AUTOTOUR
+        lda #0                  ; zero page is not cleared at power-up
+        sta tour_boards
+        sta tour_done
+        sta tour_wr
+.endif
         ldx #0
 :       lda vcharset,x
         sta VCHR,x
@@ -181,6 +195,23 @@ mz_new_game:
 
 ; mz_new_board: dots, screen, colours, chutes open
 mz_new_board:
+.ifdef AUTOTOUR
+        lda #$FF
+        sta tour_c
+        sta tour_r
+        lda tour_boards
+        bne @t2
+        lda #<tour_table        ; first board: eat every dot
+        sta tp
+        lda #>tour_table
+        sta tp+1
+        jmp @tb
+@t2:    lda #<tour_table2       ; second board: the tunnel both ways
+        sta tp
+        lda #>tour_table2
+        sta tp+1
+@tb:    inc tour_boards
+.endif
         ldx #0
 :       lda mz_dots,x
         sta dots,x
@@ -612,6 +643,9 @@ tunnel:
         sta ax_lo,x
         lda #>(TUN_R*8)
         sta ax_hi,x
+        .ifdef AUTOTOUR
+        inc tour_wr
+        .endif
         rts
 :       cmp #TUN_R
         bne @x
@@ -622,6 +656,9 @@ tunnel:
         sta ax_lo,x
         lda #>(TUN_L*8)
         sta ax_hi,x
+        .ifdef AUTOTOUR
+        inc tour_wr
+        .endif
 @x:     rts
 
 ; step: move actor X one pixel in adir
@@ -1066,9 +1103,13 @@ collide:
         jsr pb_sfx
         ldx mtmp
         jmp @n
+.ifdef AUTOTOUR
+@die:   jmp @n                  ; test tour: ghosts cannot hurt
+.else
 @die:   lda #EV_DEATH
         sta mev
         rts
+.endif
 @n:     inx
         cpx #5
         bne @g
@@ -1737,6 +1778,39 @@ mz_go_show:
 
 ; ------------------------------------------------------------------------
 ; mz_freeze: maze paused look (Pac-Man hidden, walls dim, message)
+.ifdef AUTOTOUR
+; autopilot (tour test build): at each new cell centre take the next
+; direction of tour_table (every dot, then the tunnel both ways).
+autopilot:
+        ldx #0
+        jsr tile_of
+        beq :+
+        rts
+:       lda mcol
+        cmp tour_c
+        bne :+
+        lda mrow
+        cmp tour_r
+        beq @x                  ; same cell: no new step
+:       lda mcol
+        sta tour_c
+        lda mrow
+        sta tour_r
+        ldy #0
+        lda (tp),y
+        cmp #$FF
+        bne :+
+        lda tour_boards         ; end of a table: 1 = dots done, 2 = all done
+        sta tour_done
+        rts
+:       sta want
+        inc tp
+        bne @x
+        inc tp+1
+@x:     rts
+.include "tour_data.s"
+.segment "CODE"
+.else
 .ifdef AUTOPLAY
 ; autopilot (test builds only): at tile centres, steer Pac-Man toward a
 ; chute (alternating left/right by board half) without reversing.
@@ -1797,6 +1871,7 @@ autopilot:
         bmi :+
         sta want
 :       rts
+.endif
 .endif
 
 mz_freeze:

@@ -406,6 +406,10 @@ idle_reset:
         rts
 ; idle_tick: C=1 when the game has had no input change for 60 s
 idle_tick:
+.ifdef AUTOTOUR
+        clc                     ; the tour test never idles out
+        rts
+.endif
         lda joy2
         ora port1
         cmp lastin

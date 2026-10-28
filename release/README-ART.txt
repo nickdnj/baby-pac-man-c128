@@ -10,7 +10,9 @@ release/stable-baseline/ are unchanged: if an art image misbehaves, go back
 to them.
 
 IMAGES
-  art3-sound.d64 / .d71    NEWEST, RECOMMENDED: table v2 + SID sound (maze siren,
+  art4-mazefix.d64 / .d71  NEWEST, RECOMMENDED: art3-sound plus the maze fix (the
+                           tunnel-row corridors were walled off; lines widened).
+  art3-sound.d64 / .d71    (maze bug, do not use): table v2 + SID sound (maze siren,
                            chomp, flipper thwack, bumper pings, start fanfare).
                            BABY PAC-MAN and PINBALL (+ VDCTEST, DUALDEMO).
                              DLOAD "BABY PAC-MAN",U9   or   DLOAD "PINBALL",U9
@@ -53,7 +55,7 @@ STATUS
   It runs lighter than the first art table (VICE: peak 16,728, no slow frames).
 
 WHAT TO tell the maintainer
-  * Order to try at the museum: art3-sound (newest), then art2-pinball (same, no
+  * Order to try at the museum: art4-mazefix (newest), then art3-sound (has the maze bug), then art2-pinball (same, no
     sound), then art-babypac / art-pinball (first art table), and the stable
     tier images if any of these misbehave.
   * BABY PAC-MAN on the art disks is 113 blocks (Tier 3 was 70): it takes a few

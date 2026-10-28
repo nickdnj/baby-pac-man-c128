@@ -332,3 +332,31 @@ game, v2 table) and PINBALL (v2), plus VDCTEST / DUALDEMO.
   autopilot 200 s on 16K (second game, high score kept). Audio checked by recording
   the SID output to WAV (real time; warp mutes sound) and analysing loudness and pitch:
   `release/preview/art-goal4-sound-check.txt`. Nobody has listened to it yet.
+
+## 2026-10-28 maze fix after the first real-hardware run
+
+First run on the museum's flat C128: both screens in colour, game loads and plays. Bug seen on the real machine
+(and reproduced in VICE once we looked): the corridors along the middle of the maze (tunnel row 12, columns 2-8
+and 31-37) were walls in the game logic and "outside" in the wall art. Cause: tools/mkmaze.py walled every cell
+outside the first and last '#' of a row except '='. The tunnel row has no border '#', so its corridor cells
+counted as blank space. Effects: 14 dots Pac-Man could never reach (the board could not be cleared), the tunnel
+mouths led nowhere, and the walls facing those cells had no lines (the "disjointed" look). Fix: only ' ' cells
+outside the border are blank (typ and kind).
+
+Why VICE missed it: no run ever left the chute route (the old autopilot only steers to a chute), and every
+screenshot looked plausible. Lesson: test the whole maze, not the happy path.
+
+Also changed: wall lines moved from 4 px to 5 px inside the wall face (core depth 8, line at least 4.5 px from
+a corridor), so a straight corridor has 16 px between lines instead of 14 for a 14 px actor. The old art let
+ghosts touch a line by 1 px at 12 junctions.
+
+New tests (`make test-tour`):
+- tests/maze_clearance.py: runs mkmaze in-process, slides every Pac-Man and ghost sprite pixel by pixel along every
+  link between open cells (placement as draw_sprites does it), checks connectivity and that every dot is reachable.
+- tools/mktour.py + AUTOTOUR build of maze.s + tests/run_tour.py: a route that eats every dot then crosses the
+  tunnel both ways, walked by an autopilot at tile centres through the real movement code in VICE (ghosts harmless,
+  idle timeout off). Passes on the new data in about 3 s of warp. Negative control: built with the old maze data
+  it stalls with 174 dots left and fails.
+- Zero page is not cleared at power-up: the AUTOTOUR counters are zeroed in mz_init_gfx.
+
+New disk: release/art4-mazefix.d64/.d71 (disk name "baby pac-man fix"). Not yet run on the real machine.

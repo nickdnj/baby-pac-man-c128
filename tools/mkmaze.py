@@ -13,9 +13,10 @@ Outputs:
   constants: NDOTS, glyph codes, slot cells, sprite indices
 
 Walls: rounded "double line" art computed from a pixel distance field. The
-inner line sits 4 px inside every wall face, so a 13-14 px actor centred on
-a 1-cell corridor never touches it; the outer border gets a second line on
-its outside edge, the ghost house a second line on its inside edge.
+line sits 5 px inside every wall face (16 px between the lines of a 1-cell corridor), so
+a 14 px actor centred on a corridor never touches it; the outer border gets a
+second line on its outside edge, the ghost house a second line on its inside
+edge. tests/maze_clearance.py checks every corridor link pixel by pixel.
 Usage: mkmaze.py OUT.s [PREVIEW_PREFIX]
 """
 import math
@@ -78,9 +79,11 @@ for r in range(TOP, TOP + len(MAZE)):
         row = MAZE[r - TOP]
         first = row.index('#') if '#' in row else 0
         last = row.rindex('#')
-        if c < first and row[c] != '=':
+        # only blank cells outside the border are walls: the tunnel row has
+        # no border wall, its corridor cells (and dots) run out to the '='
+        if c < first and row[c] == ' ':
             typ[r][c] = 1
-        if c > last and row[c] != '=':
+        if c > last and row[c] == ' ':
             typ[r][c] = 1
 for r in range(11, 14):
     for c in range(16, 24):
@@ -116,7 +119,7 @@ for i, row in enumerate(MAZE):
     r = TOP + i
     first, last = row.index('#') if '#' in row else 1, row.rindex('#')
     for c in range(W):
-        if (c < first or c > last) and row[c] != '=':
+        if (c < first or c > last) and row[c] == ' ':
             kind[r][c] = 'O'
 # tunnel channel runs to the screen edge; chutes run down through row 23
 kind[tunnel_row][0] = kind[tunnel_row][39] = 'C'
@@ -144,9 +147,12 @@ def near_dist(x, y, target):
 
 
 # dc = distance of each wall pixel to the nearest corridor pixel; the
-# "core" is everything at least 7 px deep. The line is the set of pixels
-# 3 px outside the core (and at least 3.5 px from a corridor): 4 px inside
-# a straight face, with rounded convex and concave corners.
+# "core" is everything at least 8 px deep. The line is the set of pixels
+# 3 px outside the core (and at least 4.5 px from a corridor): 5 px inside
+# a straight face (16 px between the lines of a 1-cell corridor, room for a
+# 14 px actor), with rounded convex and concave corners.
+CORE_DEPTH = 8.0
+LINE_MIN = 4.5
 dc = {}
 for r in range(TOP, TOP + len(MAZE)):
     for c in range(W):
@@ -163,7 +169,7 @@ def is_core(x, y):
         return True
     if k != 'W':
         return False
-    return dc.get((x, y), 99.0) >= 7.0
+    return dc.get((x, y), 99.0) >= CORE_DEPTH
 
 
 def core_dist(x, y):
@@ -185,7 +191,7 @@ for r in range(TOP, TOP + len(MAZE)):
             for x in range(c * 8, c * 8 + 8):
                 d = dc[(x, y)]
                 dk = core_dist(x, y)
-                on = 2.5 <= dk < 3.5 and d >= 3.5
+                on = 2.5 <= dk < 3.5 and d >= LINE_MIN
                 # second line: wall pixels touching the outside or the house
                 if near_dist(x, y, 'OH') <= 1.0 and d > 4.5:
                     on = True
