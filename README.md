@@ -13,6 +13,7 @@ A non-commercial homage to Bally Midway's 1982 **Baby Pac-Man**, the arcade hybr
 - [What the game is](#what-the-game-is)
 - [Screenshots](#screenshots)
 - [How to run it](#how-to-run-it)
+- [Installing on a real C128 (step by step)](#installing-on-a-real-c128-step-by-step)
 - [Controls](#controls)
 - [How it works](#how-it-works)
 - [Building from source](#building-from-source)
@@ -89,6 +90,69 @@ The program takes over the machine and never returns to BASIC. **To leave it, pr
 Load time on a real 1571 has not been measured. The `BABY PAC-MAN` program is 114 blocks, so expect it to take a while.
 
 **This has not been confirmed on real hardware as of 2026-10-27.** If you try it, please report what you see, with photos. There are known unknowns listed below.
+
+## Installing on a real C128 (step by step)
+
+You need two things: the disk image on something the C128 can read, and the right cables and controllers. Nothing gets installed on the computer itself. The game loads from the drive into RAM each time and never writes to the disk.
+
+### 1. Get the disk image
+
+Download `art3-sound.d64` from the [latest release](https://github.com/nickdnj/baby-pac-man-c128/releases) (or the `.d71`). The fallback disks (`art2-pinball`, `tier3-babypac` and the rest) are in the repo's [`release/`](release/) folder. Then pick one way to get it into a drive:
+
+| If you have... | Do this |
+|---|---|
+| **An SD-card drive (SD2IEC, uIEC, or similar)** | Copy the `.d64` onto the SD card. Put the card in, mount the image with the drive's own buttons or menu, and note its device number (often 8). Then load with `U8` instead of `U9`, or change the device number to 9. This is the easiest route. |
+| **An Ultimate-II+ cartridge, Ultimate 64, or Pi1541** | Put the `.d64` on its storage and mount it as drive 9 in its menu. |
+| **A real 1571 and a PC or Mac with a ZoomFloppy or XUM1541 cable** | Put a blank, formatted 5.25" disk in the drive and write the image with OpenCBM: `d64copy art3-sound.d64 9` (use the drive's device number). A single-sided `.d64` is a 1541-format disk, which a 1571 reads in 1541 mode. We have not tried this on a real 1571. |
+| **A volunteer with a C64/C128 disk-transfer kit** | Hand them the `.d64`. Ask for a copy of the disk as-is, not a file copy. |
+
+A plain file copy of the `.d64` onto a real floppy does not work. The image has to be written as a disk image, track by track.
+
+### 2. Connect the machine (power OFF)
+
+- **Joystick in port 2.** It steers Pac-Man and starts the game.
+- **Paddles in port 1.** The fire buttons work the flippers. Joystick left/right also works the flippers if the paddles do not respond.
+- **40-column monitor** on the composite or RGB video port: the maze.
+- **80-column monitor** on the RGBI (digital) port: the pinball. It must take the VDC's RGBI color signal to show color.
+- **Drive** on the serial cable. The commands below assume device 9. If it is device 8, use `U8`.
+
+### 3. Turn it on
+
+1. Turn the monitors and the drive on. Turn the C128 on last. Use **C128 mode** (not C64 mode, and not GO64).
+2. Turn the monitor **volume down** first. This version plays sound, and nobody has heard it on a real machine yet.
+3. Type `DIRECTORY U9` and press RETURN. You should see four programs: `VDCTEST`, `DUALDEMO`, `PINBALL` and `BABY PAC-MAN`.
+
+### 4. Load in this order
+
+Each line is typed at the BASIC prompt, then press RETURN. For every new program, the cleanest start is to power off, wait five seconds, and power on.
+
+| Step | Type | Then | What you should see |
+|---|---|---|---|
+| 1 | `DLOAD "VDCTEST",U9` | `RUN` | A text report on both screens, a green border, and 16 color bars. Proves the 80-column screen and its RAM. |
+| 2 | `DLOAD "DUALDEMO",U9` | `RUN` | A bouncing ball on each screen. Lets you test the joystick and paddles. |
+| 3 | `DLOAD "PINBALL",U9` | `RUN` | The pinball table on the 80-column screen. |
+| 4 | `DLOAD "BABY PAC-MAN",U9` | `RUN` | The maze on the 40-column screen. Press joystick FIRE to start. This is the biggest program (114 blocks), so give it up to a minute. |
+
+Do not touch anything while the drive light is on.
+
+### 5. Leaving a program
+
+- `VDCTEST` and `DUALDEMO`: RUN/STOP + RESTORE, or reset.
+- `PINBALL` and `BABY PAC-MAN`: **only the RESET button works.** RUN/STOP and RESTORE are disabled on purpose.
+
+### 6. If something goes wrong
+
+Try these disks in order (same commands): `art2-pinball`, then `art-babypac` or `art-pinball`, then the plain `tier3-babypac`, `tier2-pinball` and `tier1-diag`.
+
+| Symptom | Likely cause |
+|---|---|
+| `FILE NOT FOUND` | The device number is wrong (try `U8`), or the name is off. Check with `DIRECTORY U9`. |
+| Blank 80-column screen | Wrong monitor port, or the monitor does not take RGBI. Try `VDCTEST` first. |
+| Pinball is black and white | The monitor is taking a composite or mono signal, not RGBI. |
+| Game feels slow or jerky | Take a photo of the `PINBALL MAX / PEAK / SLOW FRAMES` line on the 40-column screen and send it in. |
+| Keys and joystick do nothing | Check the joystick is in port 2. Power-cycle before trying again. |
+
+The printable [museum field sheet](docs/museum-field-sheet.md) has the same steps plus a list of photos to take.
 
 ## Controls
 
