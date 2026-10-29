@@ -80,6 +80,8 @@ chase:      .res 1
 eatcount:   .res 1
 mp:         .res 2
 mi:         .res 1
+rcnt:       .res 1      ; choose_random tries left
+wantage:    .res 1      ; frames since a joystick direction was held
 mcol:       .res 1
 mrow:       .res 1
 best:       .res 2
@@ -403,7 +405,7 @@ mz_frame:
         ; joystick -> want
         lda joy2
         and #$0F
-        beq @nojoy
+        beq @idle
         ldx #3
 :       lda joybit,x
         and joy2
@@ -412,6 +414,16 @@ mz_frame:
         bpl :-
         bmi @nojoy
 :       stx want
+        lda #0
+        sta wantage
+        beq @nojoy
+@idle:  lda wantage             ; stick released: keep the wish for 24 frames
+        cmp #24                 ; (contact bounce), then Pac-Man just carries on
+        bcs :+
+        inc wantage
+        bne @nojoy
+:       lda adir
+        sta want
 @nojoy:
 .ifdef AUTOPLAY
         jsr autopilot
@@ -801,6 +813,8 @@ ghost_step:
         bne @mv
         jsr tunnel
         ldx mi
+        jsr tile_of             ; after a warp: the cell on the other side
+        ldx mi
         jsr choose_dir
         ldx mi
 @mv:    jmp step
@@ -822,6 +836,8 @@ eye_step:
         cmp #20
         beq @home
 @nav:   jsr tunnel
+        ldx mi
+        jsr tile_of
         ldx mi
         jsr choose_dir
         ldx mi
@@ -933,12 +949,13 @@ dist2:
         rts
 
 choose_random:
-        ldy #4                  ; try up to 4 random directions
-@t:     sty mtmp+1
-        lda frame
+        lda #4                  ; try up to 4 random directions
+        sta rcnt                ; (not mtmp+1: ghost_legal overwrites that, and a
+                                ; ghost with only "reverse" left looped forever)
+@t:     lda frame
         eor ay
         eor ax_lo
-        adc mtmp+1
+        adc rcnt
         and #3
         sta cand
         ldx mi
@@ -952,8 +969,7 @@ choose_random:
         lda cand
         sta adir,x
         rts
-@n:     ldy mtmp+1
-        dey
+@n:     dec rcnt
         bne @t
         ; fall back: first legal non-reverse in order
         ldy #0

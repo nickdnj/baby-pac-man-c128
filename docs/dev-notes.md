@@ -360,3 +360,27 @@ New tests (`make test-tour`):
 - Zero page is not cleared at power-up: the AUTOTOUR counters are zeroed in mz_init_gfx.
 
 New disk: release/baby-pac-man.d64/.d71 (disk name "baby pac-man"). Not yet run on the real machine.
+
+## 2026-10-29 freeze after an energizer (report from the museum)
+
+Reported on the real machine after the maze fix: eat an energizer, the ghosts turn blue, then everything locks up.
+Also "sometimes it picks its own direction to run".
+
+Cause of the freeze (reproduced in VICE by putting a blue ghost on the left tunnel mouth heading out: the frame
+counter stops and the PC sits inside choose_random): choose_random kept its retry counter in mtmp+1, and
+ghost_legal (via cell_at) overwrites mtmp+1. A frightened ghost with no legal move except "reverse" never ran the
+counter down and looped for ever. The tunnel mouths are exactly such cells, and the maze fix had just made them
+reachable (before it, no ghost could get there). Fix: a dedicated counter, rcnt.
+
+Second bug found on the way: after a tunnel warp the ghost code still used the cell it had left (the mouth), saw a
+dead end, reversed, and bounced between the two mouths for ever. Ghosts now re-read their cell after a warp.
+
+"Picks its own direction": the joystick direction was remembered for ever (want stayed set after the stick was
+released), so Pac-Man turned by himself at the next opening in that direction. Now the wish lasts 24 frames after
+release (covers contact bounce on old sticks), then Pac-Man just carries on straight. Not verified beyond reading
+the code; tell us if it still happens (a diagonal stick press picks one fixed
+direction, which could look similar).
+
+New test: tests/ghost_tunnel.py (part of make test-tour): blue and normal ghost on the tunnel mouth, frame counter
+must keep moving and the ghost must come out on the other side. A 25,000-frame run with four blue ghosts roaming
+finished with no hang.

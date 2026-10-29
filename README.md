@@ -6,7 +6,7 @@
 
 A non-commercial homage to Bally Midway's 1982 **Baby Pac-Man**, the arcade hybrid with a video maze on top of a little pinball table. The Commodore 128 has two independent video chips, the 40-column VIC-IIe and the 80-column VDC, and this project puts the maze on one and the pinball on the other. Go down a chute and the maze freezes while the ball launches on the second screen. Drain the ball and you are back in the maze. It is written in 6502 assembly, with our own code and our own pixel art, as a tribute for the Vintage Computer Federation museum and the C128 community.
 
-**Status in one line:** it loads and runs on a real flat Commodore 128 (first run: 2026-10-28) and in the VICE x128 emulator. That first real run found a maze bug, fixed in the newest disk, **`baby-pac-man`**, which has not been run on the real machine yet. See [Status and honesty](#status-and-honesty).
+**Status in one line:** it loads and runs on a real flat Commodore 128 (first run: 2026-10-28) and in the VICE x128 emulator. The first real runs found a maze bug and a freeze after eating an energizer, both fixed in the newest disk (v0.2.1), which has not been run on the real machine yet. See [Status and honesty](#status-and-honesty).
 
 ## Contents
 
@@ -202,7 +202,7 @@ The Makefile assumes Homebrew's `/opt/homebrew/bin`, and the project was built w
 | `make` / `make all` | Builds the three early "tier" disks into `build/` (`tier1`, `tier2`, `tier3`). These use the **first-generation art and the first table**, not the current look. |
 | `make baby-pac-man` | **Builds the current recommended disk** (table v2, sound, fixed maze) into `build/` and **copies it to `release/baby-pac-man.d64` and `.d71`, overwriting those files**. |
 | `make art3-sound` | Builds the previous disk (it has the maze bug) and copies it to `release/art3-sound.*`. |
-| `make test-tour` | Runs the maze tests: a pixel check that every actor fits every corridor, then a VICE run in which an autopilot Pac-Man eats every dot, clears the board and crosses the tunnel both ways. Needs VICE and takes a few seconds. |
+| `make test-tour` | Runs the maze tests: a pixel check that every actor fits every corridor, a VICE run in which an autopilot Pac-Man eats every dot, clears the board and crosses the tunnel both ways, and a check that blue and normal ghosts get through the tunnel without freezing the game. Needs VICE and takes a minute or two. |
 | `make art2-pinball`, `make art-babypac`, `make art-pinball` | Older art-pass images, each copied into `release/`. Because they rebuild from the current source, they now include sound. |
 | `make release` | Builds tiers 1 to 3 and **copies them over `release/tier1-diag.*`, `release/tier2-pinball.*` and `release/tier3-babypac.*`, overwriting the known-good tier images already there.** Do not run it casually. |
 | `make run-vdctest`, `make run-dualdemo` | Run the diagnostics in VICE. |
@@ -229,7 +229,7 @@ docs/images/ Screenshots used in this README
 
 ## Status and honesty
 
-**Real hardware, 2026-10-28.** The game was loaded and run on the museum's flat Commodore 128 (a 1985 model, so 16K of VDC RAM) with the maze on a Commodore 1902 and the pinball on a 1084S. Both screens came up in color. Playing it showed a bug that VICE had not: the corridors along the middle of the maze (the tunnel row) were walled off in the game logic and drawn wrongly, so Pac-Man could not use them and the board could never be cleared. The maze generator treated the tunnel row's corridor cells as blank space outside the border. That is fixed in `baby-pac-man`. New tests (`make test-tour`) check every corridor link pixel by pixel and have a bot eat every dot in VICE; both fail on the old data and pass on the new. **`baby-pac-man` has not been run on the real machine yet.**
+**Real hardware, 2026-10-28.** The game was loaded and run on the museum's flat Commodore 128 (a 1985 model, so 16K of VDC RAM) with the maze on a Commodore 1902 and the pinball on a 1084S. Both screens came up in color. Playing it showed a bug that VICE had not: the corridors along the middle of the maze (the tunnel row) were walled off in the game logic and drawn wrongly, so Pac-Man could not use them and the board could never be cleared. The maze generator treated the tunnel row's corridor cells as blank space outside the border. That is fixed in `baby-pac-man`. A second report from the museum (the game froze right after Pac-Man ate an energizer) was a hang in the frightened-ghost code that the maze fix had exposed; fixed in v0.2.1. New tests (`make test-tour`) check every corridor link pixel by pixel and have a bot eat every dot in VICE; both fail on the old data and pass on the new. **`baby-pac-man` has not been run on the real machine yet.**
 
 **Everything else below was verified in the VICE x128 emulator only, as of 2026-10-27.**
 

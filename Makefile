@@ -214,6 +214,7 @@ $(B)/test-tour.d64: $(B)/babypac-tour.prg
 	rm -f $@
 	$(C1541) -format "bpm tour,tt" d64 $@ -write $(B)/babypac-tour.prg bptour >/dev/null
 .PHONY: test-tour
-test-tour: $(B)/test-tour.d64
+test-tour: $(B)/test-tour.d64 $(B)/test-auto2.d64
 	python3 -I tests/maze_clearance.py
 	python3 tests/run_tour.py
+	python3 tests/ghost_tunnel.py
