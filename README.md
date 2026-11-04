@@ -6,7 +6,7 @@
 
 A non-commercial homage to Bally Midway's 1982 **Baby Pac-Man**, the arcade hybrid with a video maze on top of a little pinball table. The Commodore 128 has two independent video chips, the 40-column VIC-IIe and the 80-column VDC, and this project puts the maze on one and the pinball on the other. Go down a chute and the maze freezes while the ball launches on the second screen. Drain the ball and you are back in the maze. It is written in 6502 assembly, with our own code and our own pixel art, as a tribute for the Vintage Computer Federation museum and the C128 community.
 
-**Status in one line:** it loads and runs on a real flat Commodore 128 (first run: 2026-10-28) and in the VICE x128 emulator. The first real runs found a maze bug and a freeze after eating an energizer, both fixed in v0.2.1. The next run showed the maze had no power pellets at all (they were only ever earned on the pinball table); every board now starts with the four corner energizers (v0.2.2). The newest disk has not been run on the real machine yet. See [Status and honesty](#status-and-honesty).
+**Status in one line:** it loads and runs on a real flat Commodore 128 (first run: 2026-10-28) and in the VICE x128 emulator. The first real runs found a maze bug and a freeze after eating an energizer, both fixed in v0.2.1. The next run showed the maze had no power pellets at all (they were only ever earned on the pinball table); every board now starts with the four corner energizers (v0.2.2). Eating a blue ghost or the fruit now pops its points up on the spot (v0.2.3). The newest disk has not been run on the real machine yet. See [Status and honesty](#status-and-honesty).
 
 ## Contents
 

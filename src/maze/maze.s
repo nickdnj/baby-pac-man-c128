@@ -107,12 +107,23 @@ sir_on:     .res 1      ; siren (SID voice 2) running
 sir_ph:     .res 1
 jn_i:       .res 1      ; start jingle (SID voice 3): note index
 jn_t:       .res 1      ; frames left on this note
+pop_t:      .res 1      ; score popup frames left (the maze stands still meanwhile)
+pop_n:      .res 1      ; popup width in cells
+pop_who:    .res 1      ; ghost whose sprite is hidden under the popup (0 = none)
+pop_i:      .res 1      ; popup string index
+pop_lo:     .res 1      ; screen offset of its first cell
+pop_hi:     .res 1
+pop_sv:     .res 4      ; screen codes under the popup
+pop_cv:     .res 4      ; colours under the popup
 
 .segment "CODE"
 
 ; ------------------------------------------------------------------------
 ; mz_init_gfx: VIC bank 3, our charset (256 glyphs) + sprites.
 mz_init_gfx:
+        lda #0
+        sta pop_t
+        sta pop_who
 .ifdef AUTOTOUR
         lda #0                  ; zero page is not cleared at power-up
         sta tour_boards
@@ -247,6 +258,8 @@ mz_new_board:
         cpx #220
         bne :-
         jsr place_ener          ; four corner energizers on every new board
+        lda #0
+        sta pop_t
         lda #1
         jsr mz_set_chutes
         lda #0
@@ -428,6 +441,14 @@ mz_sprites_off:
 mz_frame:
         lda #EV_NONE
         sta mev
+        lda pop_t               ; a score popup is up: the maze stands still
+        beq @run
+        dec pop_t
+        bne @still
+        jsr popup_end
+@still: lda mev
+        rts
+@run:
         ; joystick -> want
         lda joy2
         and #$0F
@@ -1135,7 +1156,7 @@ collide:
         sta gstate,x
         lda #0
         sta gblue,x
-        stx mtmp
+        stx pop_who
         inc eatcount
         ldy eatcount
         lda ghostpts_lo-1,y
@@ -1143,7 +1164,8 @@ collide:
         jsr pb_add_score
         lda #2
         jsr pb_sfx
-        ldx mtmp
+        jsr ghost_popup         ; the points pop up where the ghost was
+        ldx pop_who
         jmp @n
 .ifdef AUTOTOUR
 @die:   jmp @n                  ; test tour: ghosts cannot hurt
@@ -1415,6 +1437,167 @@ fruit_eat:
         jsr pb_add_score
         lda #3
         jsr pb_sfx
+        lda #0
+        sta pop_who
+        lda #19                 ; the points pop up on the fruit's cell
+        sta tgt_c
+        lda #15
+        sta tgt_r
+        lda fr_kind             ; strings 4-7: 100 300 500 700
+        clc
+        adc #4
+        jsr popup_show
+@x:     rts
+
+; ghost_popup: pop_who = the ghost just eaten; its points pop up on its cell
+; and its sprite hides until the popup ends
+ghost_popup:
+        ldx pop_who
+        lda ax_lo,x
+        clc
+        adc #4
+        sta mtmp
+        lda ax_hi,x
+        adc #0
+        lsr
+        ror mtmp
+        lsr mtmp
+        lsr mtmp
+        lda mtmp
+        sta tgt_c
+        lda ay,x
+        clc
+        adc #4
+        lsr
+        lsr
+        lsr
+        sta tgt_r
+        lda eatcount            ; 200 400 800 1600 (strings 0-3)
+        sec
+        sbc #1
+        cmp #4
+        bcc :+
+        lda #3
+:       jsr popup_show
+        ldx pop_who
+        lda sprbit,x
+        eor #$FF
+        and VIC_SPREN
+        sta VIC_SPREN
+        rts
+
+; popup_show: A = string index (0-3 ghost points, 4-7 fruit points), tgt_c /
+; tgt_r = the cell to centre it on. Saves what is on screen under it, writes
+; the digits, hides Pac-Man and starts the 45-frame freeze (mz_frame counts pop_t down).
+POP_FRAMES = 45
+popup_show:
+        sta pop_i
+        tay
+        lda pop_len,y
+        sta pop_n
+        lsr                     ; first cell = centre - n/2, inside columns 1..38
+        sta mtmp
+        lda tgt_c
+        sec
+        sbc mtmp
+        cmp #1
+        bcs :+
+        lda #1
+:       sta tgt_c
+        lda #39
+        sec
+        sbc pop_n
+        cmp tgt_c
+        bcs :+
+        sta tgt_c
+:       jsr cell_at             ; (clobbers mtmp) -> mp = offset of the first cell
+        lda mp
+        sta pop_lo
+        lda mp+1
+        sta pop_hi
+        ; screen codes: save, then write the digits
+        lda pop_lo
+        clc
+        adc #<VSCR
+        sta mtmp
+        lda pop_hi
+        adc #>VSCR
+        sta mtmp+1
+        lda pop_i
+        asl
+        asl
+        tax
+        ldy #0
+@s:     lda (mtmp),y
+        sta pop_sv,y
+        lda pop_str,x
+        sta (mtmp),y
+        inx
+        iny
+        cpy pop_n
+        bne @s
+        ; colours: save, then colour the digits
+        lda pop_lo
+        clc
+        adc #<COLRAM
+        sta mtmp
+        lda pop_hi
+        adc #>COLRAM
+        sta mtmp+1
+        ldx pop_i
+        ldy #0
+@c:     lda (mtmp),y
+        sta pop_cv,y
+        lda pop_colr,x
+        sta (mtmp),y
+        iny
+        cpy pop_n
+        bne @c
+        lda VIC_SPREN           ; Pac-Man hides too, so the digits can be read
+        and #$FE
+        sta VIC_SPREN
+        lda #POP_FRAMES
+        sta pop_t
+        rts
+
+; popup_end: put back the screen codes and colours, show Pac-Man and the ghost
+popup_end:
+        lda pop_lo
+        clc
+        adc #<VSCR
+        sta mtmp
+        lda pop_hi
+        adc #>VSCR
+        sta mtmp+1
+        ldy #0
+@s:     lda pop_sv,y
+        sta (mtmp),y
+        iny
+        cpy pop_n
+        bne @s
+        lda pop_lo
+        clc
+        adc #<COLRAM
+        sta mtmp
+        lda pop_hi
+        adc #>COLRAM
+        sta mtmp+1
+        ldy #0
+@c:     lda pop_cv,y
+        sta (mtmp),y
+        iny
+        cpy pop_n
+        bne @c
+        lda VIC_SPREN
+        ora #1
+        sta VIC_SPREN
+        ldx pop_who
+        beq @x
+        lda VIC_SPREN
+        ora sprbit,x
+        sta VIC_SPREN
+        lda #0
+        sta pop_who
 @x:     rts
 
 ; ------------------------------------------------------------------------
@@ -2154,6 +2337,10 @@ scat_c:     .byte 0, 37, 2, 37, 2
 scat_r:     .byte 0, 2, 2, 22, 22
 gcolour:    .byte COL_YELLOW, COL_RED, COL_LTRED, COL_CYAN, COL_ORANGE
 sprbit:     .byte 1, 2, 4, 8, 16
+; score popups: strings 0-3 ghosts (200 400 800 1600), 4-7 fruit (100 300 500 700)
+pop_str:    .byte "200 ", "400 ", "800 ", "1600", "100 ", "300 ", "500 ", "700 "
+pop_len:    .byte 3, 3, 3, 4, 3, 3, 3, 3
+pop_colr:   .byte COL_CYAN, COL_CYAN, COL_CYAN, COL_CYAN, COL_WHITE, COL_WHITE, COL_WHITE, COL_WHITE
 mouthseq:   .byte 0, 1, 2, 1
 chutecol:   .byte CHUTE_L, CHUTE_R
 ghostpts_lo: .byte <200, <400, <800, <1600, <1600, <1600

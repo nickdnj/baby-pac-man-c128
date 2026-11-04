@@ -398,3 +398,17 @@ refill empty corners; when all four are full the extra is 500 points (unchanged)
 New test: tests/energizers_start.py (part of make test-tour). tests/ghost_tunnel.py now shuts the chutes first,
 because the autopilot's route changed and it could be on the pinball table (maze frozen) at the frame the test
 looked.
+
+## 2026-11-04 score popups (v0.2.3)
+
+Request from the museum: eating a blue ghost or the fruit showed no points on screen. Now the points pop up where
+it happened: 200 / 400 / 800 / 1600 for ghosts (cyan), 100 / 300 / 500 / 700 for fruit (white).
+
+How: popup_show saves the screen codes and colours under the digits (3 or 4 cells, kept inside columns 1-38),
+writes the digits straight into the VIC screen, hides Pac-Man (and the eaten ghost) so the digits can be read, and
+sets pop_t = 45 frames. While pop_t is running mz_frame does nothing else, so the maze stands still (as in the
+arcade for ghosts; the fruit freeze is our simplification: nothing can eat a dot under the popup, so restoring the
+saved cells is exact). popup_end puts the cells back and turns the sprites on again; the eyes then run home.
+
+New test: tests/score_popup.py (part of make test-tour): ghost 200 and fruit 700 digits on screen, popup over after
+about 1.3 s, sprites back on, digits gone. A 14,000-frame run did not hang.

@@ -219,3 +219,4 @@ test-tour: $(B)/test-tour.d64 $(B)/test-auto2.d64
 	python3 tests/run_tour.py
 	python3 tests/ghost_tunnel.py
 	python3 tests/energizers_start.py
+	python3 tests/score_popup.py
