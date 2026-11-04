@@ -384,3 +384,17 @@ direction, which could look similar).
 New test: tests/ghost_tunnel.py (part of make test-tour): blue and normal ghost on the tunnel mouth, frame counter
 must keep moving and the ghost must come out on the other side. A 25,000-frame run with four blue ghosts roaming
 finished with no hang.
+
+## 2026-11-04 no power pellets on the real machine (v0.2.2)
+
+Reported on the real C128 with v0.2.1: the maze has no power pellets at all. Not caused by the freeze fix: the
+maze was designed (PRD FR-2.2) to start every board with none, and only the pinball table awarded them, so a
+visit to the maze alone never showed one. The owner wants them in the maze from the start.
+
+Fix: mz_new_board now calls place_ener, which puts an energizer (dots = 2, glyph, cyan) in each of the four
+corner slots. They are not counted in mz_dotsleft, so a board still clears on the dots alone. Pinball awards still
+refill empty corners; when all four are full the extra is 500 points (unchanged).
+
+New test: tests/energizers_start.py (part of make test-tour). tests/ghost_tunnel.py now shuts the chutes first,
+because the autopilot's route changed and it could be on the pinball table (maze frozen) at the frame the test
+looked.

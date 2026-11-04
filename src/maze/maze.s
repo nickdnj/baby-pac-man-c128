@@ -246,10 +246,36 @@ mz_new_board:
         inx
         cpx #220
         bne :-
+        jsr place_ener          ; four corner energizers on every new board
         lda #1
         jsr mz_set_chutes
         lda #0
         jsr mz_paint
+        rts
+
+; place_ener: an energizer in each of the four corner slots (not counted in
+; mz_dotsleft: the board clears on the dots alone)
+place_ener:
+        ldy #0
+@s:     ldx slot_off_lo,y
+        lda slot_off_hi,y
+        beq @lo
+        lda #2
+        sta dots+768,x
+        lda #G_ENER
+        sta VSCR+768,x
+        lda #COL_CYAN
+        sta COLRAM+768,x
+        jmp @n
+@lo:    lda #2
+        sta dots,x
+        lda #G_ENER
+        sta VSCR,x
+        lda #COL_CYAN
+        sta COLRAM,x
+@n:     iny
+        cpy #4
+        bne @s
         rts
 
 ; mz_set_chutes: A = 1 open, 0 closed
