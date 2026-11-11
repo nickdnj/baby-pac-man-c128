@@ -29,7 +29,7 @@ Two monitors, one game. The visitor sees a bright, moving screen and a dim, stil
 | D3 | Same HUD on both screens | Score, high score, lives and fruit appear on both screens. | A visitor looking at either screen sees the score. Only changed values are rewritten, so VDC cost is small. |
 | D4 | Maze layout | Redrawn 38x21-cell maze, 4 rows of HUD and messages. Section 5. | Fits 40x25 with no scrolling. |
 | D5 | Pinball table | 40x25-cell table in the middle of the 80x25 VDC screen, funneled sides, 7-cell flippers, 4-cell center drain. Section 7. | Fits (answers the stakeholder's question). The drain width is a tuning knob, 3 to 5 cells. |
-| D6 | Where the ball enters | The ball emerges from the top mouth that matches the maze chute Pac-Man used, after the GET READY beat. | Reinforces cause and effect (UX-5) and gives the player 2+ s of ball travel to reach the paddles. |
+| D6 | Where the ball enters | **Changed 2026-11-11 (owner request):** the ball is shot up the plunger lane on the right edge, whichever chute was taken (story: Pac-Man leaves the chute and arrives at the plunger), see 8.1. Originally: the ball emerges from the top mouth that matches the maze chute Pac-Man used, after the GET READY beat. | Reinforces cause and effect (UX-5) and gives the player 2+ s of ball travel to reach the paddles. |
 | D7 | Big text on the VDC | Headlines use a 2-cells-wide x 1-cell-tall glyph pair. Body text uses a bold 1-cell font. | VDC cells are tall and narrow (about 1:2.4 on a 4:3 monitor), so a 2x1 pair is nearly square. [Unconfirmed: computed from 4:3.] |
 | D8 | Ball vs. color limit | The ball is always white and always wins: any cell the ball touches is drawn white for that frame. | One foreground color per cell makes any other rule produce a wrong-colored ball. Side effect: walls and bumpers "flash" as the ball passes. |
 | D9 | Joystick works the flippers | Hint text says "PADDLE BUTTONS (OR JOYSTICK LEFT/RIGHT)". | The visitor does not have to switch controllers in a hurry (FR-5.4). It is also the one-handed way to play (Section 12). |
@@ -379,6 +379,16 @@ Times are from the moment of the trigger. NTSC, 60 frames/s. Targets only; the a
 | 1.3 s | | Banner removed. The ball appears in the mouth matching the chute taken, and is kicked down and slightly inward, with a small random variation. | Launch "thunk" |
 | 1.3 - about 3 s | | Ball travels down the upper table to the flippers. This is the player's time to reach the paddles. | |
 
+**Changed 2026-11-11 (pinball upgrade phase 1, PRD FR-3.1 / FR-3.2): plunger launch.** The two rows above (ball appears in a top mouth) are replaced by:
+
+| Time | VIC (maze) | VDC (pinball) | Sound |
+|---|---|---|---|
+| by 0.3 s - 1.3 s | Frozen | `GET READY` (left panel row 13, columns 7-15) and the blinking `GO!` (rows 14-15, columns 8-14), inside the monitor safe area (VDC columns 6-74). The ball sits on the plunger at the bottom of the shooter lane (right edge of the table, table columns 37-38); the spring visibly compresses over the second (8 steps), the ball going down with it. | |
+| 1.3 s | | Banner removed. The spring snaps back and fires the ball straight up the lane (no input needed). It passes the yellow one-way gate, runs up past TUNNEL, and the rounded top corner turns it left over the right pop bumper. | Launch "thunk" |
+| about 2 s | | The ball drops into the field (most often off the arch or past the bumper). From here normal play. | |
+
+The ball always comes up the right-hand lane, whichever chute Pac-Man took (the chute only decides where he reappears in the maze). The launch never scores the TUNNEL lane. The visitor now gets the shot time (about 0.75 s) on top of the GET READY beat before the ball can reach the flippers.
+
 - The requirement is "visible GO! on the VDC within 0.5 s" (FR-4.2) and "ball launches within 1.5 s with no input" (3.3). This timeline meets both: 0.3 s and 1.3 s.
 - **Order matters:** the VIC is dimmed first (0.1 - 0.25 s), so the visitor's eye is released from the maze before the VDC lights up.
 - A first-visit grace of about 3 s instead of 1 s is a candidate if the hallway test (S4) shows visitors cannot reach the paddles. It would break the 1.5 s acceptance criterion, so it needs a PRD decision. [Open question U1].
@@ -703,7 +713,7 @@ SID. The PRD sets the scope (3.8 and Section 2); this lists what each cue does, 
 | C5 | 6.4: drain gap about 3 cells, flippers 6-7 cells | Default drain 4 cells (tunable 3-5), flippers 7, with funnel walls that bring the pivots to columns 11 and 28 | Flippers at the full table width would be about 17 cells long | PRD 6.4 update; playtest |
 | C6 | 6.4: ball 6-8 pixels wide x 4 lines; pixels "about twice as tall as wide" | Ball 8-10 x 4; pixel aspect 2.0-2.4 | Arithmetic from 4:3; the PRD figure is a rounded one | V2 on the real monitor |
 | C7 | UX-2: "blue maze walls" | Light blue active, blue paused | Plain blue is dark and weak on many monitors; the dimmer blue then serves as "paused" | the stakeholder, via the M2 mock |
-| C8 | 3.3 / FR-3.2: ball "launches by itself after a 1 s GET READY beat" | Ball emerges from the chute mouth Pac-Man used, then is kicked down | Cause-and-effect continuity (UX-5); no plunger in the art | the stakeholder, via M2 mock |
+| C8 | 3.3 / FR-3.2: ball "launches by itself after a 1 s GET READY beat" | Ball emerges from the chute mouth Pac-Man used, then is kicked down. **Superseded 2026-11-11:** auto-fire plunger in a right-hand shooter lane (FR-3.2 change note, 8.1) | Cause-and-effect continuity (UX-5); no plunger in the art | the stakeholder, via M2 mock |
 | C9 | 6.5: "If the 80-column screen is unexpectedly absent, the game still runs" | A missing monitor can't be detected; a non-responding VDC chip shows an error and stops | The chutes need the pinball; a VIC-only game is a non-goal (1.3) | PRD wording |
 | C10 | FR-1.3: "dimmed or flashing banner" | Both: dim palette and the message row | | none (satisfied) |
 | C11 | FR-6.5: idle 60 s | 45 s warning and 60 s end; held inputs do not count as activity | Prevents stuck buttons keeping the game open | PRD addition |

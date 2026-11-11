@@ -27,11 +27,14 @@
 ; per-part maxima can be read from VICE (prof_lo/hi: flippers, physics,
 ; ball, tail). Compiles to nothing in the shipped build.
 .ifdef BOT
-.macro PROF n
-        lda CIA1_TAHI
+.macro PROF n                   ; (re-read if the high byte ticked meanwhile)
+:       lda CIA1_TAHI
         sta pt_hi+n
         lda CIA1_TALO
         sta pt_lo+n
+        lda CIA1_TAHI
+        cmp pt_hi+n
+        bne :-
 .endmacro
 .else
 .macro PROF n
@@ -45,7 +48,7 @@
 .export pb_sfx_tick
 
 .importzp pr_row, pr_col, pr_vcol, pr_color, pr_vattr, pr_mask
-.importzp num, tmp, frame, joy2, port1
+.importzp num, tmp, frame, joy2, port1, flipin
 .import scr_at, scr_vat, set_color, print, printi, putc, fmt_dec, vdc_font
 .import vdc_setaddr, vdc_put, vdc_fill, vdc_fillsetup, vdc_wreg, vdc_rreg
 .import row40lo, row40hi, row80lo, row80hi
@@ -64,11 +67,18 @@ C_SLING = 4
 C_TARG  = 5
 C_LANE  = 6
 C_SPIN  = 7
+C_GATE  = 8             ; v2 shooter-lane gate: open to the shot, else solid
 
 ; pb_state values
 PB_READY   = 0          ; GET READY countdown, no ball yet
 PB_PLAY    = 1
 PB_DRAINED = 2
+PB_SHOOT   = 3          ; v2: plunger shot rising up the shooter lane (no
+                        ; gravity, constant vy, triggers off) until the first
+                        ; contact (the rounded top corner), then PB_PLAY
+READY_T    = 60         ; GET READY frames (the spring compresses meanwhile)
+SHOOT_V    = 80         ; shot speed 80-87 subunits per substep (upwards)
+TURN_VY    = -16        ; vy after the top corner has turned the shot left
 
 .segment "ZEROPAGE"
 pb_state:   .res 1
@@ -151,6 +161,7 @@ fdrawn:     .res 1      ; a flipper was redrawn this frame
 fold:       .res 1      ; drawn pose being replaced ($FF = none)
 fend:       .res 1
 gq:         .res 2      ; old-pose block pointer
+spose:      .res 1      ; v2: plunger pose drawn (0 rest .. NPOSE-1)
 
 .segment "BSS"
 chr_ram:    .res 2048   ; bank 0 copy: codes 0-63 ROM font, 64-255 generated
@@ -165,6 +176,27 @@ prof1 = prof+2
 prof2 = prof+4
 prof3 = prof+6
 .export prof1, prof2, prof3
+; whole pb_frame (PROF 0 .. PROF 4) maxima by the state the frame began in:
+; words READY, PLAY, DRAINED, SHOOT
+.export pmax
+pst:        .res 1
+pmax:       .res 8
+; plunger shot statistics (tests/plunger.py): shots fired, shots that reached
+; the field (ball left of the TUNNEL lane guide wall), shots that did not
+; within 240 frames or drained first, TUNNEL lane lit within 120 frames of a
+; shot. bot_quick > 0: drain the ball that many frames after the shot (fast
+; launch loop). sh_y0: by hi at the moment of firing. sh_seen: bit per
+; shot strength (random 0-7) fired so far.
+.export sh_cnt, sh_field, sh_bad, sh_tun, bot_quick, sh_y0, sh_seen
+sh_cnt:     .res 1
+sh_field:   .res 1
+sh_bad:     .res 1
+sh_tun:     .res 1
+sh_arm:     .res 1
+sh_t:       .res 1
+sh_y0:      .res 1
+bot_quick:  .res 1
+sh_seen:    .res 1
 .endif
 
 .segment "CODE"
@@ -281,12 +313,24 @@ pb_setup:
         sta dstep
         lda #$5A
         sta rnd
+        lda #0
+        sta spose               ; glyph0 holds the plunger at rest
 .ifdef BOT
         ldx #7
         lda #0
 :       sta prof,x
+        sta pmax,x
         dex
         bpl :-
+        sta sh_cnt
+        sta sh_field
+        sta sh_bad
+        sta sh_tun
+        sta sh_arm
+        sta bot_quick
+        sta sh_seen
+        lda #$FF
+        sta sh_t
 .endif
         rts
 
@@ -540,12 +584,25 @@ set_cell_attr:
         jmp vdc_put
 
 ; pb_launch: A = chute (0 left, 1 right). Starts GET READY.
+; v2: the ball always comes up the shooter lane on the right whichever chute
+; was taken (the chute only decides where Pac-Man reappears in the maze). It
+; waits on the plunger while the spring compresses, then serve fires it.
 pb_launch:
         sta chute
         lda #PB_READY
         sta pb_state
-        lda #60
+        lda #READY_T
         sta ready_t
+.ifdef TABLE2
+        lda #<(LANE_X*32)
+        sta bx
+        lda #>(LANE_X*32)
+        sta bx+1
+        lda #0
+        sta vx
+        sta vy
+        jsr spring_set          ; spring at rest
+.endif
         lda #0
         sta pb_nudges
         sta wd_frames
@@ -554,11 +611,13 @@ pb_launch:
         sta fmove+1
         lda #$FF
         sta trig_cell
+        ; GET READY / GO! on the left panel, inside the monitor's safe area
+        ; (VDC columns 6-74): columns 7-15 and 8-14
         MASK 2
         COLOR COL_YELLOW
-        PRS 13, 5, "GET READY"
+        PRS 13, 7, "GET READY"
         lda #14
-        ldx #6
+        ldx #8
         jsr scr_at
         lda #RGBI_WHITE|$80|$10 ; bank 1, hardware blink
         sta pr_vattr
@@ -566,7 +625,7 @@ pb_launch:
         ldx #>go_big0
         jsr print
         lda #15
-        ldx #6
+        ldx #8
         jsr scr_at
         lda #RGBI_WHITE|$80|$10
         sta pr_vattr
@@ -577,6 +636,137 @@ pb_launch:
         sta dirty
         rts
 
+.ifdef TABLE2
+; serve (v2): the spring snaps back and fires the ball straight up the lane
+; (vx = 0, vy = -(SHOOT_V + 0..7)): PB_SHOOT until the first contact.
+serve:
+        lda #0
+        jsr spring_set
+        lda #0
+        sta vx
+        jsr random
+        and #7
+.ifdef BOT
+        tax                     ; shot strengths seen (bit per 0..7)
+        lda sh_seen
+        ora bitmask,x
+        sta sh_seen
+        txa
+.endif
+        clc
+        adc #SHOOT_V
+        eor #$FF
+        clc
+        adc #1
+        sta vy
+        lda #PB_SHOOT
+        sta pb_state
+.ifdef BOT
+        inc sh_cnt
+        lda #1
+        sta sh_arm
+        lda #0
+        sta sh_t
+        lda by+1
+        sta sh_y0
+.endif
+        jmp serve_end
+
+; spring_set: A = plunger pose. Redefines the 4 plunger glyphs (chr_ram, so
+; the ball composites over the right picture, and VDC $2000 + code*16).
+; Nothing to do if the pose is already drawn. ~2,300 cycles per change.
+spring_set:
+        cmp spose
+        bne :+
+        rts
+:       sta spose
+        asl
+        asl
+        asl
+        asl
+        asl                     ; pose * 32 (NPOSE <= 8)
+        clc
+        adc #<spring_bits
+        sta gp
+        lda #>spring_bits
+        adc #0
+        sta gp+1
+        ldx #0
+@c:     lda spring_codes,x
+        sta dp                  ; dp = chr_ram + code*8
+        lda #0
+        sta dp+1
+        asl dp
+        rol dp+1
+        asl dp
+        rol dp+1
+        asl dp
+        rol dp+1
+        lda dp
+        clc
+        adc #<chr_ram
+        sta dp
+        lda dp+1
+        adc #>chr_ram
+        sta dp+1
+        lda spring_codes,x      ; VDC address $2000 + code*16
+        asl
+        asl
+        asl
+        asl
+        tay
+        lda spring_codes,x
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc #$20
+        jsr vdc_setaddr         ; (preserves X)
+        ldy #0
+@b:     lda (gp),y
+        sta (dp),y
+        bit VDC_ADDR
+        bpl *-3
+        sta VDC_DATA
+        iny
+        cpy #8
+        bne @b
+        lda gp
+        clc
+        adc #8
+        sta gp
+        bcc :+
+        inc gp+1
+:       inx
+        cpx #4
+        bne @c
+        rts
+
+; ready_tick (v2, every GET READY frame): spring pose from the countdown,
+; the ball on the tip, drawn
+ready_tick:
+        lda #READY_T
+        sec
+        sbc ready_t             ; 0 .. READY_T-1
+        lsr
+        lsr
+        lsr
+        cmp #NPOSE
+        bcc :+
+        lda #NPOSE-1
+:       pha
+        jsr spring_set
+        pla
+        tax
+        lda spr_by_lo,x
+        sta by
+        lda spr_by_hi,x
+        sta by+1
+        jsr render_ball         ; (PROF: spring + ball count as "ball")
+        PROF 3
+        rts
+.else
 serve:
         ldx chute
         lda servex_lo,x
@@ -601,10 +791,12 @@ serve:
         sta vy
         lda #PB_PLAY
         sta pb_state
+.endif
+serve_end:
         MASK 2
-        PRS 13, 5, "         "
-        PRS 14, 6, "       "
-        PRS 15, 6, "       "
+        PRS 13, 7, "         "
+        PRS 14, 8, "       "
+        PRS 15, 8, "       "
         lda #3
         jsr sfx
         rts
@@ -613,6 +805,11 @@ serve:
 ; pb_frame: one 60 Hz frame. Returns A = pb_state.
 pb_frame:
         PROF 0
+.ifdef BOT
+        lda pb_state
+        and #3
+        sta pst
+.endif
         jsr flipper_input
         jsr draw_flippers
         PROF 1
@@ -627,12 +824,30 @@ pb_frame:
         lda pb_state
         cmp #PB_READY
         bne @play
+.ifdef TABLE2
+        jsr ready_tick
+.endif
         dec ready_t
         bne @out
         jsr serve
         jmp @out
 @play:  cmp #PB_PLAY
+.ifdef TABLE2
+        beq @pl
+        cmp #PB_SHOOT
         bne @out
+        ; plunger shot: no gravity, no triggers (a launch never scores the
+        ; TUNNEL lane); the first contact hands over to PB_PLAY
+        jsr shoot_step
+        lda pb_state
+        cmp #PB_SHOOT
+        bne @wd
+        jsr shoot_step
+        jmp @wd
+@pl:
+.else
+        bne @out
+.endif
         jsr substep
         lda pb_state
         cmp #PB_PLAY
@@ -642,7 +857,15 @@ pb_frame:
         cmp #PB_PLAY
         bne @drn
         jsr triggers
-        jsr watchdog
+@wd:    jsr watchdog
+.ifdef BOT
+.ifdef TABLE2
+        jsr sh_watch
+        lda pb_state
+        cmp #PB_DRAINED
+        beq @drn
+.endif
+.endif
         PROF 2
         jsr render_ball
         PROF 3
@@ -669,6 +892,42 @@ pb_frame:
         rts
 
 .ifdef BOT
+.ifdef TABLE2
+; sh_watch (BOT, every PLAY / SHOOT frame): plunger shot statistics
+sh_watch:
+        lda sh_t
+        cmp #$FF
+        beq :+
+        inc sh_t
+:       lda sh_arm
+        beq @quick
+        lda pb_state
+        cmp #PB_PLAY
+        bne @late
+        lda bx+1
+        cmp #35                 ; left of the TUNNEL lane guide wall: in
+        bcs @late
+        inc sh_field
+        lda #0
+        sta sh_arm
+        rts
+@late:  lda sh_t
+        cmp #240
+        bcc @x
+        inc sh_bad              ; 4 s and still not in the field
+        lda #0
+        sta sh_arm
+@x:     rts
+@quick: lda bot_quick
+        beq @x
+        lda sh_t
+        cmp bot_quick
+        bcc @x
+        lda #PB_DRAINED
+        sta pb_state
+        rts
+.endif
+
 ; prof_update: segment i = t[i] - t[i+1] (timer counts down); keep maxima
 prof_update:
         ldx #0
@@ -695,16 +954,36 @@ prof_update:
 @n:     inx
         cpx #4
         bne @s
-        rts
+        lda pst                 ; whole frame, by state
+        asl
+        tay
+        lda pt_lo
+        sec
+        sbc pt_lo+4
+        sta tmp
+        lda pt_hi
+        sbc pt_hi+4
+        sta tmp+1
+        cmp pmax+1,y
+        bcc @x
+        bne @m2
+        lda tmp
+        cmp pmax,y
+        bcc @x
+@m2:    lda tmp+1
+        sta pmax+1,y
+        lda tmp
+        sta pmax,y
+@x:     rts
 .endif
 
-; flipper_input: left = port1 bit2 or joy2 left; right = port1 bit3 or joy2 right
+; flipper_input: flipin (read_input): bit 2 left (C=, joystick left, paddle
+; button), bit 3 right (Right Shift, joystick right, paddle button); fire = both
 flipper_input:
         lda #0
         sta fmove
         sta fmove+1
-        lda port1
-        ora joy2
+        lda flipin              ; keys, joystick, paddle buttons (sys.s)
         sta tmp
 .ifdef BOT
         jsr bot
@@ -1176,12 +1455,12 @@ probe:
         sta pcls
         beq @no                 ; empty
         cmp #C_LANE
-        bcs @no                 ; triggers are not solid
+        bcs @trig               ; triggers are not solid
         cmp #C_FULL
         beq @yes
         cmp #C_TARG
         beq @yes
-        ; shape test against the glyph bitmap
+@shape: ; shape test against the glyph bitmap
         lda nbx
         lsr
         lsr
@@ -1231,6 +1510,11 @@ probe:
         sta ny
 @yes:   sec
         rts
+@trig:  cmp #C_GATE             ; the shooter-lane gate is open only to the
+        bne @no                 ; plunger shot: a ball in play cannot fall
+        lda pb_state            ; back into the lane
+        cmp #PB_SHOOT
+        bne @shape
 @no:    clc
         rts
 
@@ -1471,6 +1755,39 @@ shr7:
         rts
 @maxn:  lda #$80
         rts
+
+.ifdef TABLE2
+; shoot_step (v2, PB_SHOOT substep): the ball rises at the constant shot
+; speed (no gravity, vx = 0). At the first contact (the rounded top corner
+; at the head of the lane) the corner guide turns it left at the same speed,
+; as a real ball guide does (vy = TURN_VY: just enough lift to pass over the
+; right pop bumper), and normal physics take over (PB_PLAY).
+shoot_step:
+        lda bx
+        sta obx
+        lda bx+1
+        sta obx+1
+        lda by
+        sta oby
+        lda by+1
+        sta oby+1
+        lda vy
+        ldx #by
+        jsr addv
+        jsr probe_all
+        bcc @x
+        lda oby                 ; contact: back to the free position
+        sta by
+        lda oby+1
+        sta by+1
+        lda vy                  ; turned left, full speed, rising a
+        sta vx                  ; little so it clears the right pop bumper
+        lda #<TURN_VY
+        sta vy
+        lda #PB_PLAY
+        sta pb_state
+@x:     rts
+.endif
 
 ; ------------------------------------------------------------------------
 ; flippers: analytic collision of the ball with both flippers
@@ -1817,7 +2134,15 @@ light_x:
         lda #6
         jsr sfx
         jmp @d
-@tun:   lda #<1000              ; TUNNEL lane
+@tun:
+.ifdef BOT
+        lda sh_t
+        cmp #120
+        bcs :+
+        inc sh_tun              ; TUNNEL within 2 s of a shot
+:
+.endif
+        lda #<1000              ; TUNNEL lane
         ldx #>1000
         jsr add_score
         inc pb_bonus
@@ -1973,6 +2298,10 @@ pb_abort:
         jsr hide_ball
         lda #PB_DRAINED
         sta pb_state
+.ifdef TABLE2
+        lda #0
+        jsr spring_set          ; spring back at rest
+.endif
         rts
 
 ; add_score: score += A/X (16-bit)
@@ -2012,6 +2341,10 @@ watchdog:
         sta pb_state
         rts
 @nudge: inc pb_nudges
+.ifdef TABLE2
+        lda #PB_PLAY            ; (a shot can never get here; just in case)
+        sta pb_state
+.endif
         lda #<(-70)
         sta vy
         jsr random
@@ -2486,10 +2819,7 @@ flipbit:    .byte $04,$08
 fbcol:      .byte FB_COLL, FB_COLR
 pivx_lo:    .byte <PIVL_X, <PIVR_X
 pivx_hi:    .byte >PIVL_X, >PIVR_X
-.ifdef TABLE2
-servex_lo:  .byte <(SERVE_X*32), <(SERVE_X*32)    ; out of the tunnel arch
-servex_hi:  .byte >(SERVE_X*32), >(SERVE_X*32)
-.else
+.ifndef TABLE2
 servex_lo:  .byte <(52*32), <(268*32)
 servex_hi:  .byte >(52*32), >(268*32)
 .endif

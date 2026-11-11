@@ -32,7 +32,9 @@ def run(steps):
 
 def case(name, setup, row, col, text):
     off = VSCR + row * 40 + col
-    steps = ["f=800", "chutes_open=0"] + setup + [
+    # chutes shut from frame 420: no pinball visit can be running at frame
+    # 800 (see ghost_tunnel.py)
+    steps = ["f=420", "chutes_open=0", "f=800", "chutes_open=0"] + setup + [
         "t=0.15", "peek=pop_t:1", "peek=$%X:%d" % (off, len(text)),
         "t=1.3", "peek=pop_t:1", "peek=$D015:1", "peek=$%X:%d" % (off, len(text))]
     rows = run(steps)

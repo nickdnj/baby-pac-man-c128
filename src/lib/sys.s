@@ -4,7 +4,7 @@
 
 .include "hw/c128.inc"
 
-.exportzp tcyc, frame, joy2, port1, joy2_edge, port1_edge, potx, poty, video_pal
+.exportzp tcyc, frame, joy2, port1, joy2_edge, port1_edge, potx, poty, video_pal, flipin
 .export sys_init, wait_frame, read_input, detect_video, read_pots
 .export timer_start, timer_stop, vdc_basic_init, vdc_copy_rom_font
 .export ram_vectors
@@ -17,6 +17,9 @@ joy2:       .res 1      ; port 2, active-high: b0 up b1 down b2 left b3 right b4
 port1:      .res 1      ; port 1, active-high, same bit layout (paddle fire X=b2, Y=b3)
 joy2_edge:  .res 1      ; bits newly pressed this frame
 port1_edge: .res 1
+keyfl:      .res 1      ; flipper keys: b2 C= (left flipper), b3 Right Shift (right flipper)
+flipin:     .res 1      ; flipper input, b2 left / b3 right: keys, joystick left / right,
+                        ; paddle buttons; joystick fire raises both
 potx:       .res 1
 poty:       .res 1
 video_pal:  .res 1      ; 0 = NTSC, 1 = PAL, $80 = unknown
@@ -140,6 +143,48 @@ read_input:
         stx joy2
         and joy2
         sta joy2_edge
+        ; flipper keys (the C64 keyboard matrix): C= is column 7 row 5, Right
+        ; Shift column 6 row 4. Not Left Shift: the C128 SHIFT LOCK key holds
+        ; it down. Scanned after the joysticks, then no column is selected.
+        ldx #0
+        lda #$7F
+        sta CIA1_PRA
+        jsr key_settle
+        lda CIA1_PRB
+        and #$20
+        bne :+
+        ldx #$04
+:       lda #$BF
+        sta CIA1_PRA
+        jsr key_settle
+        lda CIA1_PRB
+        and #$10
+        bne :+
+        txa
+        ora #$08
+        tax
+:       stx keyfl
+        lda #$FF
+        sta CIA1_PRA
+        lda port1               ; joystick left / right, paddle buttons
+        ora joy2
+        and #$0C
+        ora keyfl
+        tax
+        lda joy2                ; joystick fire: both flippers
+        and #$10
+        beq :+
+        txa
+        ora #$0C
+        tax
+:       stx flipin
+        rts
+
+key_settle:                     ; let the keyboard column settle (about 10 us)
+        nop
+        nop
+        nop
+        nop
         rts
 
 ; read_pots: select port 1 paddles on the SID and read both pots.

@@ -220,3 +220,10 @@ test-tour: $(B)/test-tour.d64 $(B)/test-auto2.d64
 	python3 tests/ghost_tunnel.py
 	python3 tests/energizers_start.py
 	python3 tests/score_popup.py
+
+# ---------------------------------------------------------------- pinball test
+# Plunger launch (pinball upgrade phase 1): PINBOT (first shot, 32+ shots in a
+# fast launch loop) and the autopilot game (plunger visit, drain to the maze).
+.PHONY: test-pinball
+test-pinball: $(B)/test-bot2.d64 $(B)/test-auto2.d64
+	python3 tests/plunger.py

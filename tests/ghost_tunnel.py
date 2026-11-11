@@ -21,8 +21,10 @@ OUT = os.path.join(ROOT, "build", "ghost-tunnel")
 
 def run(blue):
     # chutes shut: the autopilot must not carry the game off to the pinball
-    # table (maze frozen) while the ghost is being watched
-    steps = ["f=800", "chutes_open=0", "ax_lo+1=8", "ax_hi+1=0", "ay+1=96", "adir+1=1", "gstate+1=1",
+    # table (maze frozen) while the ghost is being watched. Shut from frame 420
+    # (game under way, no visit yet): since the plunger launch a visit lasts
+    # longer and one could still be running at frame 800.
+    steps = ["f=420", "chutes_open=0", "f=800", "chutes_open=0", "ax_lo+1=8", "ax_hi+1=0", "ay+1=96", "adir+1=1", "gstate+1=1",
              "gblue+1=%d" % blue, "fright=$68,1" if blue else "fright=0,0"]
     for _ in range(6):
         steps += ["t=1", "peek=frame:2", "peek=ax_hi+1:1"]

@@ -48,8 +48,9 @@ from artlib import (RGBI, A_ALT, A_BLINK, A_REV, Canvas, Bank, resolve_cell,
 W, H = 40, 25
 C = RGBI
 
-# collision classes (must match src/pinball/pinball.s)
-C_EMPTY, C_FULL, C_SHAPE, C_BUMPER, C_SLING, C_TARGET, C_LANE, C_SPIN = range(8)
+# collision classes (must match src/pinball/pinball.s). C_GATE: the one-way
+# gate over the shooter lane, open to the plunger shot, solid to a ball in play.
+C_EMPTY, C_FULL, C_SHAPE, C_BUMPER, C_SLING, C_TARGET, C_LANE, C_SPIN, C_GATE = range(9)
 
 # ======================================================================
 # PHYSICS MAP (same construction as the Tier 2 generator)
@@ -116,6 +117,19 @@ for r in (23, 24):
 for c in range(17, 23):                 # drain pit
     put(23, c, ' ')
     put(24, c, ' ')
+# shooter lane (plunger, pinball upgrade phase 1): columns 37-38 carved through
+# the right funnel wall, rows 11-20 (column 37 from row 12; column 36 stays the
+# inner wall). The plunger sits in rows 19-20, row 21 is the floor. The ball
+# rises at x = LANE_X, runs up the TUNNEL lane and is turned left by the
+# rounded top corner. The old funnel slope cells (10,38) and (11,37) become the
+# one-way gate: open to the shot, solid to a ball in play (cannot fall back in).
+LANE_X = 304                            # ball centre in the lane (px)
+for r in range(11, 21):
+    put(r, 38, ' ')
+for r in range(12, 21):
+    put(r, 37, ' ')
+put(10, 38, 'G')
+put(11, 37, 'G')
 
 # rounded top corners: arc of radius ARC_R px (units) turning the top wall
 # into the outer wall of each side lane
@@ -186,6 +200,7 @@ P['k'] = new_pglyph([0xFF] * 8, C_FULL)
 P['T'] = new_pglyph([0xFF] * 8, C_TARGET)
 P['r'] = new_pglyph([0x00] * 8, C_LANE)
 P['W'] = new_pglyph([0xFF] * 8, C_FULL)
+P['G'] = new_pglyph(bitmap(lambda x, y: x >= 7 - y), C_GATE, n_dr)
 
 
 def bump_in(lx, ly, dr, dc):
@@ -643,8 +658,48 @@ def net_fn(ux, uy):
         return NET
     return None
 cv.fill(net_fn, 0, 12 * 8, 6 * 8, 17 * 8)
-cv.fill(ghost_fn(320 - 22, 17.7 * 16, 30, 32, C['ltred'], eyes='L', eyecol=None),
-        34 * 8, 15 * 8, 40 * 8, 20 * 8)
+# red ghost: moved out of the shooter lane, deep in the wall between the
+# funnel slope and the lane (columns 32-35, rows 19-20)
+cv.fill(ghost_fn(272, 159.5 * 2, 30, 32, C['ltred'], eyes='L', eyecol=None),
+        32 * 8, 19 * 8, 36 * 8, 21 * 8)
+
+# --- shooter lane: the one-way gate (a bright diagonal flap where the funnel
+# slope crosses the lane mouth) and the plunger (drawn per pose below)
+GATE_COL = C['ltyel']
+for (r, c) in ((10, 38), (11, 37)):
+    for ly in range(8):
+        for lx in range(8):
+            if lx + ly in (7, 8):
+                cv.px(c * 8 + lx, r * 8 + ly, GATE_COL)
+    cv.cfg[(r, c)] = GATE_COL
+
+# plunger: NPOSE poses from rest (0) to fully compressed. Four dedicated bank 0
+# glyphs (cells rows 19-20, columns 37-38) whose bitmaps pinball.s redefines
+# per pose, so the animation costs 4 glyph codes, not 4 per pose.
+NPOSE = 8
+SPRING_CELLS = [(19, 37), (19, 38), (20, 37), (20, 38)]
+SPRING_COL = C['white']
+
+
+def spring_tip(p):
+    """top scanline of the plunger tip plate in pose p (152 rest .. 162)."""
+    return 152 + (p * 10) // (NPOSE - 1)
+
+
+def spring_px(p, x, y):
+    t = spring_tip(p)
+    if t <= y <= t + 1:
+        return 299 <= x <= 308               # tip plate (the ball sits on it)
+    if y < t + 2 or y > 167:
+        return False
+    if 303 <= x <= 304:
+        return True                          # rod
+    rings = [t + 3 + round(k * (165 - (t + 3)) / 3.0) for k in range(4)]
+    return y in rings and 300 <= x <= 307    # coil
+
+
+def spring_bits(p, r, c):
+    return bitmap(lambda lx, ly: spring_px(p, c * 8 + lx, r * 8 + ly))
 
 # --- apron: the stork bringing baby Pac-Man (left), MAZE under the drain
 STORK = C['white']
@@ -762,10 +817,12 @@ for r, (col, bm) in ICON.items():
                 L.px(2 * 8 + lx, r * 8 + ly, col)
 hline(L, 12, C['ltblue'])
 hline(L, 16, C['ltblue'])
-L.text(17, 2, "FLIPPERS:", C['ltyel'])
-L.text(18, 2, "PADDLE BUTTONS", C['ltgrey'])
-L.text(19, 2, "OR JOYSTICK", C['ltgrey'])
-L.text(20, 2, "LEFT / RIGHT", C['ltgrey'])
+# flipper hint: the keyboard flippers (sys.s flipin), inside the monitor safe
+# area (VDC columns 6-74): panel columns 6-19, at most 14 characters
+L.text(17, 6, "FLIPPERS:", C['ltyel'])
+L.text(18, 6, "C= AND R-SHIFT", C['ltgrey'])
+L.text(19, 6, "OR PADDLES", C['ltgrey'])
+L.text(20, 6, "FIRE = BOTH", C['ltgrey'])
 hline(L, 21, C['ltblue'])
 # lamp row: pac-dots with two energizers (blink)
 for i in range(18):
@@ -874,8 +931,19 @@ for r in range(H):
                     NEED_B0.add((r, c))
 for (r, c) in FLIP_CELLS:
     NEED_B0.add((r, c))
+# plunger cells: reserved bank 0 codes, never shared with another cell (the
+# bitmaps change at run time), not entered in the de-dup index
+SPRING_CODE = {}
+for (r, c) in SPRING_CELLS:
+    code = bank0.free.pop(0)
+    bank0.glyphs[code] = spring_bits(0, r, c)
+    SPRING_CODE[(r, c)] = code
 for r in range(H):
     for c in range(W):
+        if (r, c) in SPRING_CODE:
+            vis_codes[r][c] = SPRING_CODE[(r, c)]
+            vis_attrs[r][c] = SPRING_COL
+            continue
         if (r, c) in text0:              # ROM font, bank 0 (ball can cross)
             code, col = text0[(r, c)]
             vis_codes[r][c] = code
@@ -1001,9 +1069,12 @@ o(".export tbl_codes, gclass, gnx, gny, pglyph, flip_codes")
 o(".export vis_codes, vis_attrs, pan_codes, pan_attrs, glyph0, glyph1")
 o(".export fl_dx, fl_dy, fl_nx, fl_ny, ball_bits, lit_row, lit_col, lit_on, lit_off")
 o(".export go_big0, go_big1, lit_h")
+o(".export spring_codes, spring_bits, spr_by_lo, spr_by_hi")
 o("NLIGHTS = %d" % NLIGHTS)
-o("SERVE_X = %d" % 160)
-o(".exportzp NLIGHTS, SERVE_X")
+o("LANE_X = %d" % LANE_X)
+o("NPOSE = %d" % NPOSE)
+o(".exportzp NLIGHTS, NPOSE")
+o(".export LANE_X")
 o("PIVL_X = %d" % PIVOTS[0][0])
 o("PIVR_X = %d" % PIVOTS[1][0])
 o("PIV_SL = %d" % PIVOTS[0][1])
@@ -1069,6 +1140,17 @@ emit("lit_off", lit_off)
 emit("lit_h", lit_h)
 emit("go_big0", go_rows[0] + [0])
 emit("go_big1", go_rows[1] + [0])
+# plunger: the 4 glyph codes (rows 19-20 x columns 37-38), their bitmaps per
+# pose (NPOSE x 4 x 8), and the ball centre (y subunits, 1/64 scanline) on the
+# tip of each pose (ball rows centre-2 .. centre+1, bottom row = tip - 1)
+emit("spring_codes", [SPRING_CODE[rc] for rc in SPRING_CELLS])
+sbits = []
+for p_ in range(NPOSE):
+    for (r, c) in SPRING_CELLS:
+        sbits += spring_bits(p_, r, c)
+emit("spring_bits", sbits, 16)
+emit("spr_by_lo", [((spring_tip(p_) - 2) * 64) & 0xFF for p_ in range(NPOSE)])
+emit("spr_by_hi", [((spring_tip(p_) - 2) * 64) >> 8 for p_ in range(NPOSE)])
 
 open(sys.argv[1], "w").write("\n".join(out) + "\n")
 print("mktable2: physics codes 64..%d; bank0 %d/176 used, bank1 %d/256 used" %

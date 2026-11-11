@@ -28,8 +28,8 @@ A non-commercial homage to Bally Midway's 1982 **Baby Pac-Man**, the arcade hybr
 ## What the game is
 
 - **The maze** is on the 40-column VIC-IIe screen: Pac-Man, four ghosts (Blinky, Pinky, Inky and Clyde, in their colors), dots, energizers, fruit, and two chutes in the bottom wall. The maze is our own redrawn layout that fits one 40x25 screen. It is not the arcade maze.
-- **The pinball** is on the 80-column VDC screen: a short table with two flippers, pop bumpers, slingshots, side lanes (FRUITS and TUNNEL), and a block of eight PAC / MAN targets. The ball launches by itself. There is no plunger, and there are no outlanes, only a center drain.
-- **One game plays while the other is frozen.** Pac-Man steers into an open chute, the maze dims and freezes, the pinball brightens, and after a short "GET READY" the ball drops in. When the ball drains down the middle, the pinball freezes and dims, and the maze resumes with Pac-Man just above the chute he took. Draining the ball does not cost a life. Lives are lost only in the maze.
+- **The pinball** is on the 80-column VDC screen: a short table with two flippers, pop bumpers, slingshots, side lanes (FRUITS and TUNNEL), and a block of eight PAC / MAN targets. The ball is shot up a plunger lane on the right edge by itself (the spring compresses during GET READY, then fires). There are no outlanes, only a center drain.
+- **One game plays while the other is frozen.** Pac-Man steers into an open chute, the maze dims and freezes, the pinball brightens, and after a short "GET READY" the plunger fires the ball into play. When the ball drains down the middle, the pinball freezes and dims, and the maze resumes with Pac-Man just above the chute he took. Draining the ball does not cost a life. Lives are lost only in the maze.
 - **The two halves feed each other.** Completing a column or a word of PAC / MAN targets earns an energizer for the maze, and lighting the FRUITS lane makes the maze fruit better. Every board starts with an energizer in each of the four corners. Earned energizers refill empty corners (up to four, extras are worth points). After a pinball visit the chutes stay shut until you lose a life or clear the board.
 - **Three lives**, a score shared between both screens, a high score kept until power-off, and an idle timeout of 60 seconds that ends an abandoned game.
 
@@ -165,7 +165,7 @@ The printable [museum field sheet](docs/museum-field-sheet.md) has the same step
 | Joystick left / right (port 2) | Pinball | Fallback: flips the left or right flipper |
 | RESET | Any time | Leave the program |
 
-The paddle knobs are not used. The ball launches without any button.
+The paddle knobs are not used. The plunger fires by itself; no button launches the ball.
 
 The paddle button and port-1 line assignments were written from memory. Our unattended emulator runs never exercised real presses, so joystick and paddle input is untested, in VICE and on real hardware.
 
