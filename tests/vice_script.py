@@ -12,12 +12,15 @@ hard to reach by waiting. Steps (run in order):
   w=SYM:V        wait until the byte at SYM equals V
   SYM=V[,V..]    poke bytes (hex or decimal) at a label (or $hex address)
   SYM+K=V[,V..]  ... at label + K
+  pokes=A=V;B=V  several pokes in ONE monitor stop (atomic: the game does
+                 not run between them), each A as for SYM / SYM+K above
   peek=SYM:N     print N bytes at SYM
   vdc=PATH       monitor screenshot (the VDC window) to PATH
   mon=TEXT       raw monitor command(s), ';'-separated, all in one stop,
                  e.g. "mon=t 0008 0008 0009;t 0012 0012 0013" (copies)
 At the end x128 quits, writing OUTPREFIX-vdc.png / OUTPREFIX-vic.png
-(exit screenshots of both windows). Example:
+(exit screenshots of both windows). Extra x128 arguments can be given in the
+environment variable VS_X128ARGS (e.g. VS_X128ARGS=-VDC16KB). Example:
   vice_script.py build/test-auto.d64 bpauto build/babypac-auto.lbl out/blue \
       f=1500 fright=$68,1 gblue+1=1,1,1,1 f=1530
 """
@@ -60,7 +63,8 @@ p = subprocess.Popen(["x128", "-default", "-ntsc", "-warp", "-minimized", "+soun
                       "-keybuf", 'dload"%s",u9\nrun\n' % name,
                       "-remotemonitor", "-remotemonitoraddress", "ip4://127.0.0.1:%d" % port,
                       "-exitscreenshot", out + "-vdc.png",
-                      "-exitscreenshotvicii", out + "-vic.png"],
+                      "-exitscreenshotvicii", out + "-vic.png"]
+                     + os.environ.get("VS_X128ARGS", "").split(),
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
 
 
@@ -174,6 +178,13 @@ try:
                     break
                 time.sleep(0.1)
             print("waited", sym, "=", got)
+        elif k == "pokes":
+            cmds = []
+            for item in v.split(";"):
+                sym, vals = item.split("=", 1)
+                cmds.append("> %04x %s" % (addr_of(sym), " ".join("%02x" % val(x) for x in vals.split(","))))
+            mon(";".join(cmds))
+            print("poked", v)
         elif k == "mon":
             print("mon", v); print(mon(v).strip())
         elif k == "vdc":

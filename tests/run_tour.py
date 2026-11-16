@@ -99,7 +99,8 @@ try:
     result = {k: (peek(k) or [None])[0] for k in ("tour_done", "tour_boards", "tour_wr")}
     left = peek("mz_dotsleft", 2)
     result["dots_left"] = left[0] | (left[1] << 8) if left else None
-    sock.sendall(b"quit\n")
+    time.sleep(0.5)                       # (x128 sometimes missed a quit sent right
+    sock.sendall(b"quit\n")               # after the last peek: harness race)
     p.wait(timeout=30)
 finally:
     if p.poll() is None:

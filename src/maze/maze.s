@@ -15,12 +15,15 @@
 .export mz_freeze, mz_resume, mz_set_chutes, mz_hud, mz_paint, mz_show_sprites
 .export mz_hide_pac, mz_msg_clear, mz_death_anim, mz_flash_walls, mz_go_show
 .export mz_sprites_off, mz_title_draw, mz_title_anim, mz_title_fade
-.export mz_siren_off, mz_jingle_start, mz_jingle_tick
+.export mz_siren_off, mz_jingle_start, mz_jingle_tick, mz_wait_tick
 .exportzp mz_chute, mz_lives, mz_dotsleft, mz_hold, mz_hiscore
+; read-only, for the VDC status board (board.s)
+.exportzp gstate, fright, chase
+.export gblue, fr_t, fr_kind, NDOTS
 .export VSCR
 
 .importzp pr_row, pr_col, pr_vcol, pr_color, pr_vattr, pr_mask, vicscr
-.importzp num, tmp, frame, joy2, port1, pb_score, pb_fruit
+.importzp num, tmp, frame, joy2, port1, pb_score, pb_fruit, pb_energ
 .import scr_at, set_color, print, printi, putc, fmt_dec
 .import row40lo, row40hi, pb_add_score, pb_sfx
 
@@ -34,6 +37,8 @@ FR_Y    = 15*8 + 47
 FR_TIME = 570                   ; fruit stays 9.5 s
 GO_X    = 156                   ; GO! banner (expanded) over the ghost house
 GO_Y    = 136
+WT_ECOL = 32                    ; pinball visit, row 24: energizer icon column
+                                ; (count at columns 36-37)
 
 T_OPEN  = 0
 T_WALL  = 1
@@ -115,6 +120,16 @@ pop_lo:     .res 1      ; screen offset of its first cell
 pop_hi:     .res 1
 pop_sv:     .res 4      ; screen codes under the popup
 pop_cv:     .res 4      ; colours under the popup
+wt_en:      .res 1      ; pinball visit: energizer count shown on row 24
+wt_o:       .res 1      ; mz_wait_tick scratch
+wt_d:       .res 1
+wt_bx:      .res 5      ; per ghost (wt_setup): sprite x low byte, y,
+wt_by:      .res 5      ; sway axis (0 horizontal, 2 vertical), shape set
+wt_ax:      .res 5      ; (0 blue, 1 eyes, 2 normal), first sprite pointer,
+wt_kd:      .res 5      ; register index, phase
+wt_pb:      .res 5
+wt_ri:      .res 5
+wt_ph:      .res 5
 
 .segment "CODE"
 
@@ -2107,9 +2122,168 @@ mz_freeze:
         sta VIC_BORDER
         MASK 1
         COLOR COL_LTRED
-        PRS 24, 1, "<< PINBALL IS ON THE LEFT SCREEN      "
+        PRS 24, 1, "<< PINBALL ON THE LEFT SCREEN  "
+        COLOR COL_CYAN          ; energizers earned on this ball: o X n
+        PRS 24, 32, "  X    "
+        lda #G_ENER
+        sta VSCR+24*40+WT_ECOL
+        lda #$FF                ; mz_wait_tick prints the count
+        sta wt_en
+        jsr wt_setup            ; waiting ghosts
         lda #1
         jmp mz_paint
+
+; mz_wait_tick: every frame of a pinball visit (the maze is frozen). The
+; ghosts wait where they stopped: each paces two pixels to and fro along
+; its corridor and looks around (blue ones keep their frightened shape,
+; eyes look around), one ghost on every even frame (each every 8 frames);
+; the odd frames keep the row-24 energizer counter. Only the sprite registers and
+; pointers are written; ax_lo, ax_hi, ay, adir, gstate, gblue, fright are
+; only read (by wt_setup, at the freeze), and mz_resume (draw_sprites) puts
+; every sprite back from them. At most about 110 cycles a frame.
+mz_wait_tick:
+        lda frame
+        lsr
+        bcs wt_count            ; odd frames: the counter
+        and #3
+        tax
+        inx                     ; ghost 1-4
+        lda frame               ; step = (frame / 8 + ghost * 4) & 15
+        lsr
+        lsr
+        lsr
+        clc
+        adc wt_ph,x
+        and #15
+        tay
+        lda wt_dir,y
+        eor wt_ax,x             ; vertical: R/L/U/D -> U/D/R/L
+        sta wt_d
+        lda wt_ax,x
+        bne @v
+        lda wt_off,y            ; horizontal: x = base + offset
+        clc
+        adc wt_bx,x
+        ldy wt_ri,x
+        sta VIC_SPR0X,y
+        jmp @sh
+@v:     lda wt_by,x             ; vertical: y = base - offset
+        sec
+        sbc wt_off,y
+        ldy wt_ri,x
+        sta VIC_SPR0Y,y
+@sh:    lda frame               ; shape: feet phase, direction
+        lsr
+        lsr
+        lsr
+        and #1
+        ldy wt_kd,x             ; 0 blue, 1 eyes, 2 normal
+        beq @set                ; blue: feet only
+        dey
+        bne :+
+        lda wt_d                ; eyes: direction only
+        jmp @set
+:       sta wt_o                ; normal: direction * 2 + feet
+        lda wt_d
+        asl
+        ora wt_o
+@set:   clc
+        adc wt_pb,x
+        sta SPRPTR,x
+        rts
+
+; energizer counter (row 24): icon blinks, count when it changes
+wt_count:
+        and #3                  ; (A = frame / 2)
+        bne @cnt
+        ldy #COL_CYAN
+        lda frame
+        and #8
+        bne :+
+        ldy #COL_BLACK
+:       sty COLRAM+24*40+WT_ECOL
+@cnt:   lda pb_energ
+        cmp wt_en
+        beq @x
+        sta wt_en
+        ldx #$30                ; tens
+        sec
+:       cmp #10
+        bcc :+
+        sbc #10
+        inx
+        bne :-
+:       ora #$30
+        sta VSCR+24*40+WT_ECOL+5
+        cpx #$30
+        bne :+
+        ldx #$20                ; no leading zero
+:       stx VSCR+24*40+WT_ECOL+4
+        lda #COL_WHITE
+        sta COLRAM+24*40+WT_ECOL+4
+        sta COLRAM+24*40+WT_ECOL+5
+@x:     rts
+
+; wt_setup (mz_freeze): per ghost the base sprite position, the sway axis,
+; the shape set and its colour, from the frozen game state (read only).
+; Horizontal sway only where x +-2 cannot cross the 256-pixel line (the
+; X MSB stays as draw_sprites set it); ghosts out in the maze heading up or
+; down sway vertically.
+wt_setup:
+        ldx #1
+@g:     txa
+        asl
+        sta wt_ri,x             ; sprite register index
+        asl
+        sta wt_ph,x             ; phase: ghost * 4
+        lda ax_lo,x
+        clc
+        adc #19
+        sta wt_bx,x
+        tay                     ; (low byte of the sprite x)
+        lda ay,x
+        clc
+        adc #47
+        sta wt_by,x
+        lda #0
+        cpy #2
+        bcc @vert
+        cpy #254
+        bcs @vert
+        ldy gstate,x
+        beq @axis
+        ldy adir,x
+        cpy #D_UP
+        bcc @axis
+@vert:  lda #2
+@axis:  sta wt_ax,x
+        lda gstate,x
+        cmp #2
+        bne :+
+        lda #1                  ; eyes
+        ldy #SPRBASE+SP_EY_R
+        lda #COL_WHITE
+        sta VIC_SPR0COL,x
+        lda #1
+        bne @kind
+:       lda gblue,x
+        beq :+
+        ldy #SPRBASE+SP_FR0     ; frightened
+        lda #COL_BLUE
+        sta VIC_SPR0COL,x
+        lda #0
+        beq @kind
+:       ldy #SPRBASE+SP_GH_R0   ; normal
+        lda gcolour,x
+        sta VIC_SPR0COL,x
+        lda #2
+@kind:  sta wt_kd,x
+        tya
+        sta wt_pb,x
+        inx
+        cpx #5
+        bne @g
+        rts
 
 ; mz_resume: A = chute (0/1), X = energizers to award
 mz_resume:
@@ -2337,6 +2511,12 @@ scat_c:     .byte 0, 37, 2, 37, 2
 scat_r:     .byte 0, 2, 2, 22, 22
 gcolour:    .byte COL_YELLOW, COL_RED, COL_LTRED, COL_CYAN, COL_ORANGE
 sprbit:     .byte 1, 2, 4, 8, 16
+; waiting ghosts (pinball visit): 16 steps of 8 frames. Offset in pixels
+; along the corridor and the direction the ghost faces: out to +2 facing
+; right, a look up, back facing left and on to -2, a look down, back.
+wt_off:     .byte 0, 1, 2, 2, 2, 2, 1, 0, 0, <-1, <-2, <-2, <-2, <-2, <-1, 0
+wt_dir:     .byte D_RIGHT, D_RIGHT, D_RIGHT, D_UP, D_UP, D_LEFT, D_LEFT, D_LEFT
+            .byte D_LEFT, D_LEFT, D_LEFT, D_DOWN, D_DOWN, D_RIGHT, D_RIGHT, D_RIGHT
 ; score popups: strings 0-3 ghosts (200 400 800 1600), 4-7 fruit (100 300 500 700)
 pop_str:    .byte "200 ", "400 ", "800 ", "1600", "100 ", "300 ", "500 ", "700 "
 pop_len:    .byte 3, 3, 3, 4, 3, 3, 3, 3

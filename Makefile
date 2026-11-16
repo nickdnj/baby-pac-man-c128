@@ -59,7 +59,11 @@ $(B)/maze_data.s: tools/mkmaze.py | $(B)
 	python3 tools/mkmaze.py $@ > $(B)/maze_map.txt
 $(B)/maze.o: src/maze/maze.s $(B)/maze_data.s src/hw/*.inc src/lib/*.inc
 	$(CA65) $(AFLAGS) -I $(B) -o $@ $<
-BPOBJ = $(B)/main3.o $(B)/maze.o $(B)/pinball.o $(LIBOBJ)
+# board.o: the VDC status board (table v2 builds); board-v1.o: stubs for the
+# v1 table builds (their panel art differs)
+$(B)/board-v1.o: src/maze/board.s src/hw/*.inc
+	$(CA65) $(AFLAGS) -D NOBOARD=1 -o $@ $<
+BPOBJ = $(B)/main3.o $(B)/maze.o $(B)/board-v1.o $(B)/pinball.o $(LIBOBJ)
 $(B)/babypac.prg: $(BPOBJ) $(CFG)
 	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/babypac.map -Ln $(B)/babypac.lbl $(BPOBJ)
 $(B)/tier3-babypac.d64: $(B)/babypac.prg $(B)/pinball.prg $(B)/vdctest.prg $(B)/dualdemo.prg
@@ -73,7 +77,7 @@ $(B)/maze-auto.o: src/maze/maze.s $(B)/maze_data.s src/hw/*.inc src/lib/*.inc
 	$(CA65) $(AFLAGS) -I $(B) -D AUTOPLAY=1 -o $@ $<
 $(B)/main3-auto.o: src/maze/main3.s src/hw/*.inc src/lib/*.inc
 	$(CA65) $(AFLAGS) -D AUTOPLAY=1 -o $@ $<
-AUTOOBJ = $(B)/main3-auto.o $(B)/maze-auto.o $(B)/pinball-bot.o $(LIBOBJ)
+AUTOOBJ = $(B)/main3-auto.o $(B)/maze-auto.o $(B)/board-v1.o $(B)/pinball-bot.o $(LIBOBJ)
 $(B)/babypac-auto.prg: $(AUTOOBJ) $(CFG)
 	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/babypac-auto.map -Ln $(B)/babypac-auto.lbl $(AUTOOBJ)
 $(B)/test-auto.d64: $(B)/babypac-auto.prg
@@ -142,10 +146,10 @@ $(B)/pinball2.prg: $(B)/pbmain2.o $(B)/pinball2.o $(LIBOBJ) $(CFG)
 	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/pinball2.map -Ln $(B)/pinball2.lbl $(B)/pbmain2.o $(B)/pinball2.o $(LIBOBJ)
 $(B)/pinball2-bot.prg: $(B)/pbmain2.o $(B)/pinball2-bot.o $(LIBOBJ) $(CFG)
 	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/pinball2-bot.map -Ln $(B)/pinball2-bot.lbl $(B)/pbmain2.o $(B)/pinball2-bot.o $(LIBOBJ)
-$(B)/babypac2.prg: $(B)/main3.o $(B)/maze.o $(B)/pinball2.o $(LIBOBJ) $(CFG)
-	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/babypac2.map -Ln $(B)/babypac2.lbl $(B)/main3.o $(B)/maze.o $(B)/pinball2.o $(LIBOBJ)
-$(B)/babypac2-auto.prg: $(B)/main3-auto.o $(B)/maze-auto.o $(B)/pinball2-bot.o $(LIBOBJ) $(CFG)
-	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/babypac2-auto.map -Ln $(B)/babypac2-auto.lbl $(B)/main3-auto.o $(B)/maze-auto.o $(B)/pinball2-bot.o $(LIBOBJ)
+$(B)/babypac2.prg: $(B)/main3.o $(B)/maze.o $(B)/board.o $(B)/pinball2.o $(LIBOBJ) $(CFG)
+	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/babypac2.map -Ln $(B)/babypac2.lbl $(B)/main3.o $(B)/maze.o $(B)/board.o $(B)/pinball2.o $(LIBOBJ)
+$(B)/babypac2-auto.prg: $(B)/main3-auto.o $(B)/maze-auto.o $(B)/board.o $(B)/pinball2-bot.o $(LIBOBJ) $(CFG)
+	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/babypac2-auto.map -Ln $(B)/babypac2-auto.lbl $(B)/main3-auto.o $(B)/maze-auto.o $(B)/board.o $(B)/pinball2-bot.o $(LIBOBJ)
 $(B)/test-bot2.d64: $(B)/pinball2-bot.prg
 	rm -f $@
 	$(C1541) -format "bpm bot2,t4" d64 $@ -write $(B)/pinball2-bot.prg pinbot >/dev/null
@@ -207,7 +211,7 @@ $(B)/maze-tour.o: src/maze/maze.s $(B)/maze_data.s $(B)/tour_data.s src/hw/*.inc
 	$(CA65) $(AFLAGS) -I $(B) -D AUTOPLAY=1 -D AUTOTOUR=1 -o $@ $<
 $(B)/main3-tour.o: src/maze/main3.s src/hw/*.inc src/lib/*.inc
 	$(CA65) $(AFLAGS) -D AUTOPLAY=1 -D AUTOTOUR=1 -o $@ $<
-TOUROBJ = $(B)/main3-tour.o $(B)/maze-tour.o $(B)/pinball2-bot.o $(LIBOBJ)
+TOUROBJ = $(B)/main3-tour.o $(B)/maze-tour.o $(B)/board.o $(B)/pinball2-bot.o $(LIBOBJ)
 $(B)/babypac-tour.prg: $(TOUROBJ) $(CFG)
 	$(LD65) -C $(CFG) -D MAINTOP=0xC000 -o $@ -m $(B)/babypac-tour.map -Ln $(B)/babypac-tour.lbl $(TOUROBJ)
 $(B)/test-tour.d64: $(B)/babypac-tour.prg
@@ -224,6 +228,9 @@ test-tour: $(B)/test-tour.d64 $(B)/test-auto2.d64
 # ---------------------------------------------------------------- pinball test
 # Plunger launch (pinball upgrade phase 1): PINBOT (first shot, 32+ shots in a
 # fast launch loop) and the autopilot game (plunger visit, drain to the maze).
+# Both screens alive: VDC status board in the maze phase, waiting ghosts and
+# the energizer counter on the VIC during a visit, table intact after handoffs.
 .PHONY: test-pinball
 test-pinball: $(B)/test-bot2.d64 $(B)/test-auto2.d64
 	python3 tests/plunger.py
+	python3 tests/dual_screen.py

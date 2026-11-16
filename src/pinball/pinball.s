@@ -46,11 +46,12 @@
 .exportzp pb_state, pb_score, pb_energ, pb_fruit, pb_bonus, pb_nudges, pb_tgts
 .export chr_ram, pb_add_score, pb_sfx, pb_abort, pb_show_score, pb_show_all
 .export pb_sfx_tick
+.export pb_restore_row, pbr_c0, pbr_n, pbr_dim
 
 .importzp pr_row, pr_col, pr_vcol, pr_color, pr_vattr, pr_mask
 .importzp num, tmp, frame, joy2, port1, flipin
 .import scr_at, scr_vat, set_color, print, printi, putc, fmt_dec, vdc_font
-.import vdc_setaddr, vdc_put, vdc_fill, vdc_fillsetup, vdc_wreg, vdc_rreg
+.import vdc_setaddr, vdc_put, vdc_get, vdc_fill, vdc_fillsetup, vdc_wreg, vdc_rreg
 .import row40lo, row40hi, row80lo, row80hi
 
 TBLCOL  = 20            ; VDC column of table column 0
@@ -167,6 +168,9 @@ spose:      .res 1      ; v2: plunger pose drawn (0 rest .. NPOSE-1)
 chr_ram:    .res 2048   ; bank 0 copy: codes 0-63 ROM font, 64-255 generated
 disp:       .res 1000   ; what the VDC shows for each table cell (no ball)
 lit:        .res 10     ; v1: targets 0-3, lanes 4-7; v2: targets 0-7, lanes 8-9
+pbr_c0:     .res 1      ; pb_restore_row: first table column, count, dim flag
+pbr_n:      .res 1
+pbr_dim:    .res 1
 .ifdef BOT
 .export prof
 pt_lo:      .res 5
@@ -2762,6 +2766,161 @@ dimset: sta tmp+2
         cmp #25
         bne @row
         rts
+
+; ------------------------------------------------------------------------
+; pb_restore_row (maze status board, src/maze/board.s): table row X, table
+; columns pbr_c0 .. pbr_c0+pbr_n-1 back to what the table shows: screen
+; codes from disp; with pbr_dim <> 0 also the attributes from vis_attrs,
+; dimmed as pb_dim does (else the caller's pb_undim rewrites them).
+; Maze phase only (no ball on the table). ~1,400 cycles per 30-cell row
+; (codes only). The caller checks vdc_dead.
+pb_restore_row:
+        stx ry
+        jsr cell_addr0          ; tmp = VDC address of table row X, column 0
+        lda tmp
+        clc
+        adc pbr_c0
+        sta tmp
+        bcc :+
+        inc tmp+1
+:       lda tmp+1
+        ldy tmp
+        jsr vdc_setaddr
+        ldx ry
+        lda row40lo,x
+        clc
+        adc #<disp
+        sta dp
+        lda row40hi,x
+        adc #>disp
+        sta dp+1
+        ldy pbr_c0
+        ldx pbr_n
+@c:     lda (dp),y
+        bit VDC_ADDR
+        bpl *-3
+        sta VDC_DATA
+        iny
+        dex
+        bne @c
+        lda pbr_dim
+        beq @x
+        lda tmp+1
+        clc
+        adc #8
+        ldy tmp
+        jsr vdc_setaddr
+        ldx ry
+        lda row40lo,x
+        clc
+        adc #<vis_attrs
+        sta dp
+        lda row40hi,x
+        adc #>vis_attrs
+        sta dp+1
+        ldy pbr_c0
+        ldx pbr_n
+@a:     lda (dp),y
+        sta tmp+2               ; dim: light -> dark sibling (as pb_dim)
+        and #$0E
+        bne :+
+        lda tmp+2
+        and #$80
+        ora #RGBI_DKGREY
+        jmp @p
+:       lda tmp+2
+        and #$8E
+@p:     bit VDC_ADDR
+        bpl *-3
+        sta VDC_DATA
+        iny
+        dex
+        bne @a
+@x:     rts
+
+.ifdef BOT
+; pb_check_table (test builds only): read the table's 40 x 25 screen codes
+; and attributes back from VDC RAM and count the cells that differ from
+; disp / vis_attrs (A <> 0: attributes dimmed as pb_dim does) into chk_bad.
+; chk_n counts the checks. Used by main3 (AUTOPLAY) after every handoff to
+; prove the status board left the table exactly as it was. ~5 frames.
+.export pb_check_table, chk_bad, chk_n
+pb_check_table:
+        sta chk_dim
+        inc chk_n
+        lda #0
+        sta ry
+@row:   ldx ry
+        jsr cell_addr0
+        lda tmp+1
+        ldy tmp
+        jsr vdc_setaddr
+        ldx ry
+        lda row40lo,x
+        clc
+        adc #<disp
+        sta dp
+        lda row40hi,x
+        adc #>disp
+        sta dp+1
+        ldy #0
+@c:     jsr vdc_get
+        cmp (dp),y
+        beq :+
+        jsr chk_miss
+:       iny
+        cpy #40
+        bne @c
+        lda tmp+1
+        clc
+        adc #8
+        ldy tmp
+        jsr vdc_setaddr
+        ldx ry
+        lda row40lo,x
+        clc
+        adc #<vis_attrs
+        sta dp
+        lda row40hi,x
+        adc #>vis_attrs
+        sta dp+1
+        ldy #0
+@a:     jsr vdc_get
+        sta tmp+3
+        lda (dp),y
+        ldx chk_dim
+        beq @cmp
+        tax
+        and #$0E
+        bne :+
+        txa
+        and #$80
+        ora #RGBI_DKGREY
+        jmp @cmp
+:       txa
+        and #$8E
+@cmp:   cmp tmp+3
+        beq :+
+        jsr chk_miss
+:       iny
+        cpy #40
+        bne @a
+        inc ry
+        lda ry
+        cmp #25
+        bne @row
+        rts
+chk_miss:
+        inc chk_bad
+        bne :+
+        inc chk_bad+1
+:       rts
+.segment "BSS"
+chk_bad:    .res 2
+chk_n:      .res 1
+chk_dim:    .res 1
+.segment "CODE"
+.endif
 
 ; ------------------------------------------------------------------------
 ; tiny SID effects on voice 1

@@ -34,7 +34,11 @@ def case(name, setup, row, col, text):
     off = VSCR + row * 40 + col
     # chutes shut from frame 420: no pinball visit can be running at frame
     # 800 (see ghost_tunnel.py)
-    steps = ["f=420", "chutes_open=0", "f=800", "chutes_open=0"] + setup + [
+    # all setup pokes in one monitor stop: with separate stops the game ran a
+    # few frames between them, so Pac-Man and the ghost could drift apart
+    # (or touch before the ghost was blue) depending on host timing - the
+    # cause of the intermittent "ghost 200" failures (2026-11-15)
+    steps = ["f=420", "chutes_open=0", "f=800", "chutes_open=0", "pokes=" + ";".join(setup)] + [
         "t=0.15", "peek=pop_t:1", "peek=$%X:%d" % (off, len(text)),
         "t=1.3", "peek=pop_t:1", "peek=$D015:1", "peek=$%X:%d" % (off, len(text))]
     rows = run(steps)

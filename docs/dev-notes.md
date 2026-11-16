@@ -487,3 +487,107 @@ Tests:
 - Release disk: PINBALL fires and plays (64K), PINBALL on .d71 with -VDC16KB runs, BABY PAC-MAN title on the VDC.
 - Not verified: real C128 / 1084S (lane, gate and spring visibility, GET READY placement), the keyboard flipper
   keys (VICE runs here use no keyboard input), how a human feels the 1 s + 0.75 s before the ball arrives.
+
+## 2026-11-15 both screens always alive
+
+Request from the museum (volunteer test): while one game plays, the other screen must not look dead. Not a table
+redesign: table geometry, physics, flippers and plunger are untouched.
+
+**Maze phase, VDC: status board** (`src/maze/board.s`, new). Layout (VDC rows 4-17, columns 25-54 = table
+columns 5-34; inside the safe area 6-74; clear of the flipper block rows 18-22 and the plunger lane):
+
+```
+row  4  ===========  GHOSTS  ===========        the panels' double-rule glyph, light blue
+row  5   [ghost] BLINKY  CHASE                  icon = the left panel's chase-scene ghost (3x2 cells),
+row  6   [icon ]         ############           recoloured by attribute; word in its colour
+row  7   [ghost] PINKY   BLUE                   BLUE: light blue, bar = ceil(fright / 30) cells (max 12)
+row  9   [ghost] INKY    EYES                   last 2 s (fright < 120): icon, word and bar get the
+row 11   [ghost] CLYDE   HOME                   VDC hardware blink bit; EYES grey, HOME dark colour
+row 13  ================================
+row 14   DOTS  ##########..........  154        reverse-video spaces: yellow 1 per 5 % eaten,
+row 15         ##########..........  LEFT       dark grey tube; dots left (3 digits)
+row 16   LIVES (C) (C) (C)    FRUIT o           Pac-Man icons = left panel art; fruit = table row 1
+row 17                        IN MAZE           (blinks while fr_t > 0)
+```
+
+- No new glyphs (bank 0 still 153/176, bank 1 242/256): icons come from `pan_codes` / `vis_codes` at run time.
+  The bold font has no `%`, so the board shows the dots left instead of a percentage (the bar is the percentage).
+- Template (codes + attributes, 840 bytes BSS) built once by `sb_init`; `sb_show` (game start, back from the
+  pinball) draws it half a row (30 bytes) per frame, 28 steps. Then `sb_tick` checks 12 fields round robin
+  against shadow copies and redraws at most one changed field per frame (worst field: 4 address sets + 20 bytes).
+  It skips the frames where main3 runs `mz_hud` (frame & 7 = 0) and `pb_show_score` (frame & 31 = 4).
+- Handoff: `sb_hide` (to_pinball, before `pb_undim`) rewrites the board rows' screen codes from the table's own
+  `disp` via the new `pb_restore_row` (pinball.s; codes only, `pb_undim` restores the attributes); `sb_remove`
+  (game over) also writes the dimmed attributes. Inline VDC polls (as in the pinball renderer), called only when
+  `vdc_dead` is clear.
+- Read-only exports from maze.s: `gstate`, `fright`, `chase`, `gblue`, `fr_t`, `fr_kind`, `NDOTS`.
+- The v1-table builds (`babypac.prg`, `test-auto.d64`) link `board-v1.o` (`-D NOBOARD`, stubs): their panel art
+  differs.
+
+**Pinball phase, VIC** (`maze.s`). `mz_freeze` now prints `<< PINBALL ON THE LEFT SCREEN  o X  n` and calls
+`wt_setup`, which reads the frozen state once (sprite base x/y, sway axis, shape set, colour) per ghost.
+`mz_wait_tick` (main3 `pin` loop, right after `wait_frame`): even frames move one ghost (each every 8 frames):
++-2 px along its corridor (vertical for ghosts heading up/down, and wherever x +-2 could cross the 256-pixel line, so
+the X MSB never changes), facing the way it goes, looking up/down at the ends; blue ghosts keep the frightened
+shape (feet), eyes look around. Odd frames: the energizer icon blinks every 8 frames and the count is rewritten
+when `pb_energ` changes. Sprite registers / pointers / colours and screen RAM only; `mz_resume` -> `draw_sprites`
+restores every sprite from the untouched state.
+
+**Cycles** (VICE 3.10 NTSC; AUTOPLAY builds now time every loop iteration with the CIA timer: `cy_pk` peaks,
+`cy_slow`, `cy_n` in main3.s; 90 s warp autopilot run of test-auto2 and 40 s of the tour build, before -> after):
+
+| | before | after |
+|---|---|---|
+| maze play frame, peak (autopilot) | 11,096 | 11,133 / 11,078 (two runs) |
+| maze play frame, peak (tour: every dot, blue ghosts) | 8,786 | 8,844 / 8,948 (two runs) |
+| READY! frame, peak (board template drawing) | 3,762 | 4,922 |
+| to_pinball handoff (freeze, board removal, undim, lights, launch) | 162,961 (9.6 frames) | 185,307 (10.9 frames) |
+| back (pinball -> maze) | 135,396 | 135,215 |
+| pinball-loop frame peak (BOT build, includes PROF) | 23,434 | 24,315 |
+
+- The maze peak frames are the `mz_hud` / `pb_show_score` frames, which the board skips. `sb_tick` itself (timed
+  alone, `sb_pk`): at most ~5,250 cycles (5,282 measured with ~35 cycles of timer reads; 4,893 in the tour run).
+  The dearest calls are a thermometer redraw (4 address sets, 40 attribute bytes) or a ghost line (4 address sets,
+  20 bytes) on a frame that also scans the 12 fields and works out the bar after a dot. So a board frame stays
+  around 9,000 cycles, about 8,000 under one NTSC frame (VICE VDC timing: ~35 cycles a byte, ~250 an address set;
+  a slower real VDC would eat into that margin, not past it unless it is about 3x slower).
+- `mz_wait_tick`: at most ~130 cycles (166 measured including ~35 cycles of timer reads). A/B on the same build
+  (the `jsr` patched to a BIT through the monitor), equally long runs: pinball-loop peak 24,124 -> 24,302,
+  frames over 17,045: 768 / 768 without, 785 / 799 with.
+- Pre-existing, not changed here: the full-game pinball loop already goes over one NTSC frame in about 1-3.5 % of
+  frames in these BOT runs (`mz_hud` runs every 16th pinball frame on top of `pb_frame`; the shipped PINBALL
+  program does not have it).
+- The handoff grew by ~22,000 cycles (~1.3 frames, ~22 ms) for the code restore of 14 board rows.
+
+**Tests**
+- Runs (VICE 3.10): `make test-tour` PASS (maze_clearance, run_tour, ghost_tunnel, energizers_start, score_popup);
+  `make test-pinball` PASS (plunger, dual_screen); an earlier dual_screen run failed one check (IN MAZE blank;
+  most likely Pac-Man ate the poked fruit before that row, the last of five, was read: not confirmed). The check
+  now reads that row first and only expects IN MAZE if `fr_t` is non-zero before and after the read. Another run
+  failed "thermometer second row the same" near 16 dots left: the two rows are read ~0.3 s apart and a dot eaten in
+  between moved the fill by one cell (both rows are drawn in one call); the check now allows one cell.
+- `tests/dual_screen.py` (new, in `make test-pinball`): board cells read back from VDC RAM through an AUTOPLAY hook
+  (`dmp_req` -> `dmp_c` / `dmp_a`): CHASE / BLUE + bar / flashing / EYES / HOME, thermometer at 3 levels against
+  the dots-left number, 1 and 3 lives, fruit icons and IN MAZE; during a pinball visit the ghost sprites move while
+  ax_lo / ax_hi / ay / adir / gstate / gblue / fright stay byte for byte the same, the row-24 counter, the ghost
+  state unchanged after the drain and every ghost sprite back where `draw_sprites` puts it; and `chk_bad` = 0.
+- `pb_check_table` (pinball.s, BOT builds only): after every handoff (and game over, dimmed) the AUTOPLAY build
+  reads the whole 40x25 table (codes and attributes) back from VDC RAM and counts cells that differ from `disp` /
+  `vis_attrs`. 0 differing cells over 110 checks (64K VDC) and 38 checks (`-VDC16KB`). Negative control: with
+  `sb_hide` disabled, 5,340 differing cells over 31 checks.
+- `tests/run_tour.py`: the x128 quit race noted on 2026-11-11 (quit not taken within 30 s after the result) hit 3
+  runs in a row on the final tree, each after the tour had finished (debug output: done 2, both boards walked);
+  the documented workaround is now in: 0.5 s before the quit. 4 of 4 runs pass since.
+- `tests/vice_script.py`: new `pokes=A=V;B=V` step (several pokes in one monitor stop) and `VS_X128ARGS`
+  (extra x128 arguments, e.g. `-VDC16KB`).
+
+**score_popup.py "ghost 200" intermittent failure: cause found (test harness).** At the poke moment the maze was
+running normally (no pinball visit, `mz_hold` 0, no popup). vice_script applied the ten setup pokes as ten separate
+monitor stops, and the game ran a few frames between them: Pac-Man and the ghost drifted more than 5 px apart (or
+touched before the ghost was blue) depending on host timing. In a failing run the ghost was at (111,96) and Pac-Man
+at (88,126) when `gblue` landed. Fix: the test now applies all setup pokes in one stop (`pokes=`); 4 of 4 runs
+pass (were ~1 of 4). Not a game bug. The same pattern exists in other tests (ghost_tunnel.py); not changed.
+
+Not verified: real C128, 1084S / 1902 monitors (legibility from across a room, the blink rate, colours of the
+icons), real VDC write speed (VICE ~35 cycles a byte; the board and the restore use inline polls without a
+timeout, like the pinball renderer).

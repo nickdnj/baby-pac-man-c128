@@ -210,10 +210,10 @@ Highest priority wins; a lower message resumes when the higher one ends.
 | Maze live, chutes open | Hint: `TAKE A CHUTE (v) FOR PINBALL`, yellow, steady. Border black. | Paused cue in panel (below) |
 | Maze live, chutes closed | Hint: `CHUTES SHUT - CLEAR THE MAZE TO REOPEN`, yellow | Paused cue in panel |
 | Maze just resumed | `G O !` white, flashing at 2 Hz for 1 s; border flashes white at 2 Hz for the same second. Ghosts blink white (see 8.3). | Right panel: `MAZE >>` replaced by the final tally while it lasts (0.5 s), then the paused cue |
-| Maze paused (pinball live) | `<< PINBALL IS ON THE LEFT SCREEN` light red, steady. Border dark gray. Walls blue, dots dark gray. | Active |
+| Maze paused (pinball live) | `<< PINBALL IS ON THE LEFT SCREEN` light red, steady. Border dark gray. Walls blue, dots dark gray. **Since 2026-11-15:** `<< PINBALL ON THE LEFT SCREEN` plus the energizers earned on this ball (`o X n`, icon blinking); the ghosts wait in place, pacing and looking around (7.7). | Active |
 | Pinball just started | | Left panel headline `GO!` in the 2x1 big font, white, flashing at 2 Hz for 1 s. `GET READY` banner over the center lane band (rows 14-15) for 1 s. |
 | Pinball live | | Left panel hint (see 12.2). Flippers live. |
-| Pinball paused (maze live) | Active | Walls dark blue, other art dimmed (7.4). Right panel, bottom: `MAZE ON CENTER SCREEN >>` |
+| Pinball paused (maze live) | Active | Walls dark blue, other art dimmed (7.4). Right panel, bottom: `MAZE ON CENTER SCREEN >>`. **Since 2026-11-15:** live status board over the middle of the table (ghost states, dot thermometer, lives, fruit; 7.7). |
 | Idle warning | `STILL THERE? PRESS A BUTTON  nn` flashing at 1 Hz (nn counts 15 down to 1) | Same text, right panel, bottom |
 | Game over | `GAME OVER` red, row 15 over the maze (dots stay), steady. Row 24: `PRESS FIRE TO PLAY AGAIN` after 3 s. | `GAME OVER` banner over the center lane band |
 | High-score entry | Section 9.3 | Table plus the highlighted entry |
@@ -360,6 +360,43 @@ Right panel (columns 60-79):
 | 9 | `FRUIT`, icons |
 | 13-17 | Decorative art (ghost) |
 | 21 | Bottom cue: `MAZE IS PAUSED` (pinball live) or `MAZE ON CENTER SCREEN >>` (pinball paused) or `PRESS FIRE TO PLAY` (attract) |
+
+### 7.7 Both screens alive (added 2026-11-15, museum request)
+
+Request from the museum volunteer: a visitor should always see something happening on both screens. Not a table
+redesign: the table geometry is unchanged.
+
+**Maze phase, VDC: status board** over the middle of the dimmed table, VDC rows 4-17, columns 25-54 (inside the
+safe area, columns 6-74). Bold font; no new glyphs (the ghost and Pac-Man icons are the left panel's chase-scene
+art, the rule is the panels' double line, the fruit icons are the table's fruit cluster, bars are reverse-video
+spaces).
+
+```
+row  4  ===========  GHOSTS  ===========
+row  5   [ghost] BLINKY  CHASE            own colour; SCATTER / CHASE follow the ghost mode
+row  6   [icon ]         ############     BLUE: light blue + countdown bar (1 cell = 0.5 s)
+row  7   [ghost] PINKY   BLUE             last 2 s: icon, word and bar blink (VDC hardware blink)
+row  9   [ghost] INKY    EYES             eaten: grey icon, EYES
+row 11   [ghost] CLYDE   HOME             in the house: dark icon, HOME
+row 13  ================================
+row 14   DOTS  ##########..........  154  thermometer: 1 yellow cell per 5 % eaten,
+row 15         ##########..........  LEFT dark grey tube; dots left
+row 16   LIVES (C) (C) (C)    FRUIT o     lives as Pac-Man icons; fruit level icon
+row 17                        IN MAZE     blinking while a fruit is out
+```
+
+- Each field is redrawn only when its state changes (one field per frame at most); the board appears half a row
+  per frame when the maze phase starts (about 0.6 s), over the dimmed table.
+- The existing cue `MAZE ON CENTER SCREEN >>` (right panel, rows 21-22) stays.
+- Handoff to the pinball: the board is removed before the table brightens; every table cell comes back from the
+  table's own data (checked in the test builds by reading the whole table back from VDC memory). Game over: the
+  board is removed and the table stays dimmed for the title.
+
+**Pinball phase, VIC: waiting maze.** The ghosts stay where they froze but pace two pixels to and fro along their
+corridor and look around (eyes look around, blue ghosts keep their frightened shape and feet), sprite registers
+only; the game state is untouched and everything is put back on resume. Row 24:
+`<< PINBALL ON THE LEFT SCREEN  o X  n` (light red text, cyan blinking energizer icon, the number of energizers
+earned on this ball in white, updated as they are earned).
 
 ---
 
@@ -746,3 +783,4 @@ SID. The PRD sets the scope (3.8 and Section 2); this lists what each cue does, 
 | Version | Date | Author | Changes |
 |---|---|---|---|
 | 0.1 | 2026-10-27 | the maintainer DeMarco with AI assistance | Initial draft from PRD v0.1 |
+| 0.2 | 2026-11-15 | AI assistance (software-developer) | 7.7 both screens alive: VDC status board in the maze phase, waiting ghosts and energizer counter on the VIC in the pinball phase; cue table updated |

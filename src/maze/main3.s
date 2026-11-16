@@ -19,10 +19,36 @@
 .import mz_freeze, mz_resume, mz_set_chutes, mz_hud, mz_paint, mz_show_sprites
 .import mz_hide_pac, mz_msg_clear, mz_death_anim, mz_flash_walls, VSCR
 .import mz_go_show, mz_sprites_off, mz_title_draw, mz_title_anim, mz_title_fade
-.import pb_logo_tint, pb_sfx_tick, mz_jingle_start, mz_jingle_tick
+.import pb_logo_tint, pb_sfx_tick, mz_jingle_start, mz_jingle_tick, mz_wait_tick
+.import sb_init, sb_show, sb_tick, sb_hide, sb_remove
+.ifdef AUTOPLAY
+.import timer_start, timer_stop, pb_check_table, chk_bad, chk_n
+.import vdc_setaddr, vdc_get, row80lo, row80hi
+.importzp tcyc
+.endif
 
 VCHR = $C800
 IDLE_FRAMES = 3600              ; 60 s
+
+; AUTOPLAY (test) builds only: whole-frame work cycles per loop, measured
+; with the CIA1 cycle timer from the end of wait_frame to the next call
+; (cy_pk: 24-bit peaks; 0 maze play, 1 pinball visit, 2 to_pinball handoff,
+; 3 READY!, 4 back (pinball -> maze); cy_slow: frames over 17,045 in the
+; maze (0) and pinball (1) loops). Compiles to nothing in shipped builds.
+.ifdef AUTOPLAY
+.macro CYEND n
+        ldx #n
+        jsr cy_end
+.endmacro
+.macro CYBEG
+        jsr cy_beg
+.endmacro
+.else
+.macro CYEND n
+.endmacro
+.macro CYBEG
+.endmacro
+.endif
 
 .segment "ZEROPAGE"
 cnt:    .res 2
@@ -58,6 +84,22 @@ start:
         txs
         jsr ram_vectors
         jsr sys_init
+.ifdef AUTOPLAY
+        lda #0
+        sta cy_run
+        sta chk_bad
+        sta chk_bad+1
+        sta chk_n
+        sta dmp_req
+        sta wt_pk
+        sta wt_pk+1
+        sta sb_pk
+        sta sb_pk+1
+        ldx #25
+:       sta cy_pk,x             ; (cy_pk, cy_slow, cy_n are contiguous)
+        dex
+        bpl :-
+.endif
         lda #0
         sta vdc_dead
         sta VIC_SPREN
@@ -82,6 +124,7 @@ start:
         jsr pb_draw_panels
         jsr pb_reset_lights
         jsr pb_dim
+        jsr sb_init             ; VDC status board template (board.s)
         bit vdc_dead
         bmi :+
         jmp title
@@ -188,6 +231,7 @@ game:
         jsr mz_hud
         jsr mz_jingle_start     ; start fanfare plays over READY!
         jsr vdc_cue_maze
+        jsr sb_show             ; status board over the dimmed table
         bit vdc_dead
         bmi ready
         jsr pb_show_all
@@ -200,9 +244,12 @@ ready:
         PRS 24, 1, "               READY!                 "
         lda #90
         sta cnt
-:       jsr wait_frame
+:       CYEND 3
+        jsr wait_frame
+        CYBEG
         jsr read_input
         jsr mz_jingle_tick
+        jsr sb_tick
         dec cnt
         bne :-
         jsr mz_msg_clear
@@ -210,12 +257,16 @@ ready:
         lda #0
         sta gotime
         jsr idle_reset
+        CYEND 3
 
-play:   jsr wait_frame
+play:   CYEND 0
+        jsr wait_frame
+        CYBEG
         jsr read_input
         jsr pb_sfx_tick
         jsr idle_tick
         bcc :+
+        CYEND 0
         jmp game_over
 :       jsr mz_frame
         cmp #1
@@ -228,7 +279,17 @@ play:   jsr wait_frame
 :       cmp #3
         bne :+
         jmp clear
-:       lda frame
+:
+.ifdef AUTOPLAY
+        jsr sb_timed            ; test builds: sb_tick, timed
+        lda dmp_req             ; test builds: VDC row read back on request
+        beq :+
+        jsr dmp_row
+:
+.else
+        jsr sb_tick             ; status board: one field at most
+.endif
+        lda frame
         and #7
         bne :+
         jsr mz_hud
@@ -254,16 +315,54 @@ play:   jsr wait_frame
 
 ; ------------------------------------------------------------------ handoff
 to_pinball:
+        CYEND 0
+        CYBEG
         jsr mz_freeze
+        jsr sb_hide             ; table codes back (pb_undim: attributes)
         jsr pb_undim
         jsr pb_reset_lights
         jsr vdc_cue_pin
         lda mz_chute
         jsr pb_launch
-pin:    jsr wait_frame
+        CYEND 2
+.ifdef AUTOPLAY
+        lda #0                  ; test builds: the table must be intact
+        jsr pb_check_table
+.endif
+pin:    CYEND 1
+        jsr wait_frame
+        CYBEG
+.ifdef AUTOPLAY
+        jsr wt_rd               ; test builds: time mz_wait_tick alone
+        sta wt_t0
+        stx wt_t0+1
+.endif
+        jsr mz_wait_tick        ; waiting ghosts, energizer counter (VIC)
+.ifdef AUTOPLAY
+        jsr wt_rd
+        sta wt_t1
+        stx wt_t1+1
+        lda wt_t0               ; (timer counts down)
+        sec
+        sbc wt_t1
+        sta wt_t1
+        lda wt_t0+1
+        sbc wt_t1+1
+        cmp wt_pk+1
+        bcc :++
+        bne :+
+        ldx wt_t1
+        cpx wt_pk
+        bcc :++
+:       sta wt_pk+1
+        lda wt_t1
+        sta wt_pk
+:
+.endif
         jsr read_input
         jsr idle_tick
         bcc :+
+        CYEND 1
         jsr pb_abort
         jsr pb_flippers_rest
         jsr pb_dim
@@ -278,9 +377,12 @@ pin:    jsr wait_frame
         jmp pin
 
 back:
+        CYEND 1
+        CYBEG
         jsr pb_flippers_rest
         jsr pb_dim
         jsr vdc_cue_maze
+        jsr sb_show
         ldx pb_energ
         lda mz_chute
         jsr mz_resume
@@ -291,6 +393,7 @@ back:
         jsr go_blink
         lda #3
         jsr pb_sfx
+        CYEND 4
         jmp play
 
 ; go_blink: the big GO! banner over the ghost house, white / yellow
@@ -311,6 +414,7 @@ hint:
 
 ; ------------------------------------------------------------------ death
 death:
+        CYEND 0
         lda #4
         jsr pb_sfx
         lda #0
@@ -318,6 +422,7 @@ death:
 :       jsr wait_frame
         lda cnt
         jsr mz_death_anim
+        jsr sb_tick
         inc cnt
         lda cnt
         cmp #90
@@ -337,6 +442,7 @@ death:
 
 ; ------------------------------------------------------------------ board clear
 clear:
+        CYEND 0
         lda #0
         sta cnt
 :       jsr wait_frame
@@ -347,6 +453,7 @@ clear:
         lsr
         and #1
         jsr mz_flash_walls
+        jsr sb_tick
         inc cnt
         lda cnt
         cmp #128
@@ -363,6 +470,12 @@ clear:
 
 ; ------------------------------------------------------------------ game over
 game_over:
+        CYEND 5
+        jsr sb_remove           ; board off, the table stays dimmed
+.ifdef AUTOPLAY
+        lda #1                  ; test builds: dimmed table intact
+        jsr pb_check_table
+.endif
         jsr mz_sprites_off
         lda #0
         sta VIC_BORDER
@@ -461,3 +574,145 @@ vdc_cue_pin:
         PRS 21, 61, "MAZE IS PAUSED     "
         PRS 22, 61, "                   "
         rts
+
+.ifdef AUTOPLAY
+.segment "BSS"
+.export cy_pk, cy_slow, cy_n
+cy_run: .res 1
+cy_pk:  .res 18         ; 6 x 24-bit peaks
+cy_slow: .res 4         ; 2 x 16-bit
+cy_n:   .res 4          ; frames measured: maze, pinball (16-bit)
+.segment "CODE"
+cy_beg: lda #1
+        sta cy_run
+        jmp timer_start
+; cy_end: X = slot. Stops a running measurement and keeps the peak.
+cy_end: lda cy_run
+        bne :+
+        rts
+:       lda #0
+        sta cy_run
+        stx cy_x
+        jsr timer_stop
+        lda cy_x
+        asl
+        adc cy_x
+        tax                     ; X = slot * 3
+        lda tcyc+2
+        cmp cy_pk+2,x
+        bcc @nopk
+        bne @pk
+        lda tcyc+1
+        cmp cy_pk+1,x
+        bcc @nopk
+        bne @pk
+        lda tcyc
+        cmp cy_pk,x
+        bcc @nopk
+@pk:    lda tcyc
+        sta cy_pk,x
+        lda tcyc+1
+        sta cy_pk+1,x
+        lda tcyc+2
+        sta cy_pk+2,x
+@nopk:  lda cy_x
+        cmp #2
+        bcs @x
+        asl
+        tax
+        inc cy_n,x
+        bne :+
+        inc cy_n+1,x
+:       lda tcyc+2              ; over one NTSC frame (17,045)?
+        bne @slow
+        lda tcyc+1
+        cmp #>17045
+        bcc @x
+        bne @slow
+        lda tcyc
+        cmp #<17045
+        bcc @x
+@slow:  inc cy_slow,x
+        bne @x
+        inc cy_slow+1,x
+@x:     rts
+.segment "BSS"
+cy_x:   .res 1
+wt_t0:  .res 2
+wt_t1:  .res 2
+.segment "CODE"
+; sb_timed: sb_tick, keeping the most cycles one call took in sb_pk
+sb_timed:
+        jsr wt_rd
+        sta wt_t0
+        stx wt_t0+1
+        jsr sb_tick             ; status board: one field at most
+        jsr wt_rd
+        sta wt_t1
+        stx wt_t1+1
+        lda wt_t0
+        sec
+        sbc wt_t1
+        sta wt_t1
+        lda wt_t0+1
+        sbc wt_t1+1
+        cmp sb_pk+1
+        bcc @x
+        bne :+
+        ldx wt_t1
+        cpx sb_pk
+        bcc @x
+:       sta sb_pk+1
+        lda wt_t1
+        sta sb_pk
+@x:     rts
+; wt_rd: CIA1 timer A -> A lo, X hi (re-read if the high byte ticked)
+wt_rd:  ldx CIA1_TAHI
+        lda CIA1_TALO
+        cpx CIA1_TAHI
+        bne wt_rd
+        rts
+.segment "BSS"
+.export wt_pk, dmp_req, dmp_c, dmp_a, sb_pk
+sb_pk:  .res 2          ; most cycles one sb_tick took (+ ~35 for the reads)
+dmp_req: .res 1         ; poke VDC row + 1: dmp_c / dmp_a get its columns
+dmp_c:  .res 30         ; 25-54 (the status board), then dmp_req = 0
+dmp_a:  .res 30
+.segment "CODE"
+dmp_row:
+        ldx dmp_req
+        dex
+        lda row80lo,x
+        clc
+        adc #25
+        sta dmp_t
+        lda row80hi,x
+        adc #0
+        sta dmp_t+1
+        ldy dmp_t
+        jsr vdc_setaddr
+        ldx #0
+:       jsr vdc_get
+        sta dmp_c,x
+        inx
+        cpx #30
+        bne :-
+        lda dmp_t+1
+        clc
+        adc #8
+        ldy dmp_t
+        jsr vdc_setaddr
+        ldx #0
+:       jsr vdc_get
+        sta dmp_a,x
+        inx
+        cpx #30
+        bne :-
+        lda #0
+        sta dmp_req
+        rts
+.segment "BSS"
+dmp_t:  .res 2
+wt_pk:  .res 2          ; most cycles one mz_wait_tick took (+ ~20 for the reads)
+.segment "CODE"
+.endif
